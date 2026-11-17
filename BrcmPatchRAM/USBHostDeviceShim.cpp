@@ -360,7 +360,10 @@ IOReturn USBInterfaceShim::hciCommand(void* command, UInt16 length)
     };
     
     uint32_t bytesTransfered;
-    return m_pInterface->deviceRequest(request, command, bytesTransfered, 0);
+    IOReturn result = m_pInterface->deviceRequest(request, command, bytesTransfered, kUSBHostStandardRequestCompletionTimeout);
+    if (result == kIOReturnSuccess && bytesTransfered != length)
+        return kIOReturnUnderrun;
+    return result;
 }
 
 USBPipeShim::USBPipeShim()
@@ -377,6 +380,11 @@ void USBPipeShim::setPipe(OSObject* pipe)
         m_pPipe->retain();
     if (prev)
         prev->release();
+}
+
+IOReturn USBPipeShim::abortSynchronous()
+{
+    return m_pPipe->abort(IOUSBHostIOSource::kAbortSynchronous);
 }
 
 IOReturn USBPipeShim::abort(void)

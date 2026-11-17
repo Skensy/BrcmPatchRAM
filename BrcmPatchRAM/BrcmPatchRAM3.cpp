@@ -123,6 +123,7 @@ void BrcmPatchRAM::free()
 {
     DebugLog("free\n");
     
+    OSSafeReleaseNULL(mFirmwareStore);
     super::free();
 }
 
@@ -549,31 +550,22 @@ void BrcmPatchRAM::readCompletion(void* target, void* parameter, IOReturn status
             me->mDeviceState = kUpdateAborted;
             break;
             
-        case kIOUSBTransactionTimeout:
-            AlwaysLog("[%04x:%04x]: readCompletion - Transaction timeout (0x%08x)\n", me->mVendorId, me->mProductId, status);
-            break;
-            
-        case kIOReturnNotResponding:
-            AlwaysLog("[%04x:%04x]: Not responding - Delaying next read.\n", me->mVendorId, me->mProductId);
-            me->mInterruptPipe.clearStall();
-            break;
-            
         default:
             AlwaysLog("[%04x:%04x]: readCompletion - Unknown error (0x%08x)\n", me->mVendorId, me->mProductId, status);
             me->mDeviceState = kUpdateAborted;
             break;
     }
     
-    IOLockUnlock(me->mCompletionLock);
-    
-    // wake waiting task in performUpgrade (in IOLockSleep)...
+    me->mReadPending = false;
     IOLockWakeup(me->mCompletionLock, me, true);
+    IOLockUnlock(me->mCompletionLock);
 }
 
 IOReturn BrcmPatchRAM::hciCommand(void * command, UInt16 length)
 {
     IOReturn result;
     
+    mExpectedOpcode = OSReadLittleInt16(command, 0);
     if ((result = mInterface.hciCommand(command, length)) != kIOReturnSuccess)
         AlwaysLog("[%04x:%04x]: device request failed (\"%s\" 0x%08x).\n", mVendorId, mProductId, stringFromReturn(result), result);
     
@@ -585,17 +577,39 @@ IOReturn BrcmPatchRAM::hciParseResponse(void* response, UInt16 length, void* out
     HCI_RESPONSE* header = (HCI_RESPONSE*)response;
     IOReturn result = kIOReturnSuccess;
     
+    if (length < sizeof(*header) || header->length > length - sizeof(*header)) {
+        mDeviceState = kUpdateAborted;
+        return kIOReturnBadArgument;
+    }
+
     switch (header->eventCode) {
         case HCI_EVENT_COMMAND_COMPLETE:
         {
             HCI_COMMAND_COMPLETE* event = (HCI_COMMAND_COMPLETE*)response;
             
+            if (header->length < sizeof(*event) - sizeof(*header)) {
+                mDeviceState = kUpdateAborted;
+                return kIOReturnError;
+            }
+
+            if (event->opcode != mExpectedOpcode)
+                break;
+            if (event->status != 0) {
+                AlwaysLog("HCI command 0x%04x failed with status 0x%02x.\n", event->opcode, event->status);
+                mDeviceState = kUpdateAborted;
+                return kIOReturnError;
+            }
+
             switch (event->opcode) {
                 case HCI_OPCODE_READ_VERBOSE_CONFIG:
                     DebugLog("[%04x:%04x]: READ VERBOSE CONFIG complete (status: 0x%02x, length: %d bytes).\n",
                              mVendorId, mProductId, event->status, header->length);
                     
-                    mFirmwareVersion = *(UInt16*)(((char*)response) + 10);
+                    if (header->length < 12 - sizeof(*header)) {
+                        mDeviceState = kUpdateAborted;
+                        return kIOReturnBadArgument;
+                    }
+                    mFirmwareVersion = OSReadLittleInt16(response, 10);
                     
                     DebugLog("[%04x:%04x]: Firmware version: v%d.\n",
                              mVendorId, mProductId, mFirmwareVersion + 0x1000);
@@ -685,7 +699,7 @@ IOReturn BrcmPatchRAM::hciParseResponse(void* response, UInt16 length, void* out
         case HCI_EVENT_VENDOR:
             DebugLog("[%04x:%04x]: Vendor specific event. Ready to reset device.\n", mVendorId, mProductId);
             
-            if (mSupportsHandshake) {
+            if (mSupportsHandshake && mDeviceState == kFirmwareWritten) {
                 // Device is ready for reset.
                 mDeviceState = kResetWrite;
             }
@@ -817,12 +831,9 @@ bool BrcmPatchRAM::performUpgrade()
                 // responses.
                 IOSleep(mInitialDelay);
                 
-                // Write first instruction to trigger response
-                if ((data = OSDynamicCast(OSData, iterator->getNextObject())))
-                //changed from bulkWrite for BigSur support
-                hciCommand((void*)(data->getBytesNoCopy()), data->getLength());
-                break;
-                
+                mDeviceState = kInstructionWrite;
+                continue;
+
             case kInstructionWrite:
                 // should never happen, but would cause a crash
                 if (!iterator) {
@@ -831,8 +842,10 @@ bool BrcmPatchRAM::performUpgrade()
                 }
                 
                 if ((data = OSDynamicCast(OSData, iterator->getNextObject()))) {
-                    //changed from bulkWrite for BigSur support
-                    hciCommand((void*)(data->getBytesNoCopy()), data->getLength());                    
+                    if (hciCommand(const_cast<void*>(data->getBytesNoCopy()), data->getLength()) != kIOReturnSuccess) {
+                        mDeviceState = kUpdateAborted;
+                        continue;
+                    }
                 } else {
                     // Firmware data fully written
                     if (hciCommand(&HCI_VSC_END_OF_RECORD, sizeof(HCI_VSC_END_OF_RECORD)) != kIOReturnSuccess) {
@@ -882,13 +895,31 @@ bool BrcmPatchRAM::performUpgrade()
                 break;
         }
         
-        // queue async read
-        if (!continuousRead()) {
-            mDeviceState = kUpdateAborted;
-            continue;
-        }
-        // wait for completion of the async read
-        IOLockSleep(mCompletionLock, this, 0);
+        // Ignore unrelated events without resending a command or advancing the iterator.
+        DeviceState waitingState = mDeviceState;
+        if (waitingState == kFirmwareWritten && mSupportsHandshake)
+            mExpectedOpcode = 0; // Only the vendor readiness event advances this state.
+        uint64_t deadline;
+        clock_interval_to_deadline(5000, kMillisecondScale, &deadline);
+        do {
+            if (!continuousRead()) {
+                mDeviceState = kUpdateAborted;
+                break;
+            }
+            mReadPending = true;
+            while (mReadPending) {
+                int result = IOLockSleepDeadline(mCompletionLock, this, deadline, THREAD_UNINT);
+                if (result == THREAD_TIMED_OUT && mReadPending) {
+                    AlwaysLog("Interrupt read timed out waiting for device state %u.\n", waitingState);
+                    // The completion needs this lock. Drain it before reusing its buffer.
+                    IOLockUnlock(mCompletionLock);
+                    mInterruptPipe.abortSynchronous();
+                    IOLockLock(mCompletionLock);
+                    mDeviceState = kUpdateAborted;
+                    break;
+                }
+            }
+        } while (mDeviceState == waitingState);
     }
     
     IOLockUnlock(mCompletionLock);

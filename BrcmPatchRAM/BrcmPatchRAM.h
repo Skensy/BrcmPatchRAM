@@ -106,6 +106,10 @@ private:
 #endif
     bool mSupportsHandshake = false;
 
+#ifdef TARGET_CATALINA
+    UInt16 mExpectedOpcode = 0;
+    bool mReadPending = false;
+#endif
     USBCOMPLETION mInterruptCompletion {};
     IOBufferMemoryDescriptor* mReadBuffer = NULL;
     

@@ -119,6 +119,9 @@ public:
     inline OSObject* getValidatedPipe() { return m_pPipe; }
     
     IOReturn abort(void);
+#if defined(TARGET_ELCAPITAN) || defined(TARGET_CATALINA)
+    IOReturn abortSynchronous();
+#endif
     
     IOReturn read(IOMemoryDescriptor *	buffer,
                   UInt32		noDataTimeout,

@@ -37,13 +37,14 @@ private:
 
     struct ResourceCallbackContext
     {
-        BrcmFirmwareStore* me;
+        IOLock* lock;
         OSData* firmware;
+        bool done;
+        bool detached;
     };
 
     IOLock* mDataLock;
     OSDictionary* mFirmwares;
-    IOLock* mCompletionLock = NULL;
 
     OSData* decompressFirmware(OSData* firmware);
     OSArray* parseFirmware(OSData* firmwareData);

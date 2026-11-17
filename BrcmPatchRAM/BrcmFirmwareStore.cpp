@@ -81,11 +81,14 @@ OSData* BrcmFirmwareStore::decompressFirmware(OSData* firmware)
 {
     z_stream zstream;
     int zlib_result;
-    int bufferSize = 0;
+    unsigned int bufferSize = 0;
     void* buffer = NULL;
     OSData* result = NULL;
     
     // Verify if the data is compressed
+    if (firmware->getLength() < 2)
+        return NULL;
+
     UInt16* magic = (UInt16*)firmware->getBytesNoCopy();
     
     if (*magic != 0x0178     // Zlib no compression
@@ -97,9 +100,13 @@ OSData* BrcmFirmwareStore::decompressFirmware(OSData* firmware)
         return firmware;
     }
     
+    if (firmware->getLength() > UINT32_MAX / 4)
+        return NULL;
     bufferSize = firmware->getLength() * 4;
     
     buffer = IOMalloc(bufferSize);
+    if (!buffer)
+        return NULL;
     
     bzero(&zstream, sizeof(zstream));
     
@@ -122,7 +129,7 @@ OSData* BrcmFirmwareStore::decompressFirmware(OSData* firmware)
     
     zlib_result = inflate(&zstream, Z_FINISH);
     
-    if (zlib_result == Z_STREAM_END || zlib_result == Z_OK)
+    if (zlib_result == Z_STREAM_END)
         // Allocate final result
         result = OSData::withBytes(buffer, (unsigned int)zstream.total_out);
     
@@ -162,7 +169,7 @@ static inline void hex_nibble(UInt8 hex, UInt8 &output)
     
     if (hex >= 'a')
         output |= (0x0A + (hex - 'a')) & 0x0F;
-    if (hex >= 'A')
+    else if (hex >= 'A')
         output |= (0x0A + (hex - 'A')) & 0x0F;
     else
         output |= (hex - '0') & 0x0F;
@@ -191,6 +198,11 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
         return NULL;
 
     UInt8* data = (UInt8*)firmwareData->getBytesNoCopy();
+    if (!data || !firmwareData->getLength()) {
+        instructions->release();
+        return NULL;
+    }
+    const UInt8* end = data + firmwareData->getLength();
     UInt32 address = 0;
     UInt8 binary[0x110];
     
@@ -200,7 +212,7 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
         goto exit_error;
     }
     
-    while (*data == HEX_LINE_PREFIX)
+    while (data < end && *data == HEX_LINE_PREFIX)
     {
         bzero(binary, sizeof(binary));
         data++;
@@ -208,14 +220,18 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
         int offset = 0;
         
         // Read all hex characters for this line
-        while (validHexChar(*data))
+        while (data < end && validHexChar(*data))
         {
+            if (offset >= sizeof(binary) || end - data < 2 || !validHexChar(data[1]))
+                goto exit_error;
             hex_nibble(*data++, binary[offset]);
             hex_nibble(*data++, binary[offset++]);
         }
         
         // Parse line data
         UInt8 length = binary[0];
+        if (offset != HEX_HEADER_SIZE + length + 1)
+            goto exit_error;
         UInt16 addr = binary[1] << 8 | binary[2];
         UInt8 record_type = binary[3];
         UInt8 checksum = binary[HEX_HEADER_SIZE + length];
@@ -237,6 +253,8 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
                 address = (address & 0xFFFF0000) | addr;
                 
                 // Reserved 4 bytes for the address
+                if (length > 251)
+                    goto exit_error;
                 length += 4;
                 
                 // Allocate instruction (Opcode - 2 bytes, length - 1 byte)
@@ -244,20 +262,25 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
                 if (!instruction)
                     goto exit_error;
                 
-                instruction->appendBytes(HCI_VSC_LAUNCH_RAM, sizeof(HCI_VSC_LAUNCH_RAM));
-                instruction->appendBytes(&length, sizeof(length));
-                instruction->appendBytes(&address, sizeof(address));
-                instruction->appendBytes(&binary[4], length - 4);
-                
-                instructions->setObject(instruction);
+                bool stored = instruction->appendBytes(HCI_VSC_LAUNCH_RAM, sizeof(HCI_VSC_LAUNCH_RAM))
+                    && instruction->appendBytes(&length, sizeof(length))
+                    && instruction->appendBytes(&address, sizeof(address))
+                    && instruction->appendBytes(&binary[4], length - 4)
+                    && instructions->setObject(instruction);
                 instruction->release();
+                if (!stored)
+                    goto exit_error;
                 break;
             }
             // End of File
             case REC_TYPE_EOF:
+                if (length || addr)
+                    goto exit_error;
                 return instructions;
             // Extended Segment Address
             case REC_TYPE_ESA:
+                if (length != 2 || addr)
+                    goto exit_error;
                 // Segment address multiplied by 16
                 address = binary[4] << 8 | binary[5];
                 address <<= 4;
@@ -269,8 +292,10 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
                 goto exit_error;
                 // Extended Linear Address
             case REC_TYPE_ELA:
+                if (length != 2 || addr)
+                    goto exit_error;
                 // Set new higher 16 bits of the current address
-                address = binary[4] << 24 | binary[5] << 16;
+                address = UInt32(binary[4]) << 24 | binary[5] << 16;
                 break;
                 // Start Linear Address
             case REC_TYPE_SLA:
@@ -283,7 +308,7 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
         }
         
         // Skip over any trailing newlines / whitespace
-        while (!validHexChar(*data) && !(*data == HEX_LINE_PREFIX))
+        while (data < end && (*data == '\r' || *data == '\n' || *data == ' ' || *data == '\t'))
             data++;
     }
     
@@ -307,10 +332,6 @@ bool BrcmFirmwareStore::start(IOService *provider)
     if (!mFirmwares)
         return false;
     
-    mCompletionLock = IOLockAlloc();
-    if (!mCompletionLock)
-        return false;
-
     mDataLock = IOLockAlloc();
     if (!mDataLock)
         return false;
@@ -326,12 +347,6 @@ void BrcmFirmwareStore::stop(IOService *provider)
     
     OSSafeReleaseNULL(mFirmwares);
     
-    if (mCompletionLock)
-    {
-        IOLockFree(mCompletionLock);
-        mCompletionLock = NULL;
-    }
-
     if (mDataLock)
     {
         IOLockFree(mDataLock);
@@ -345,7 +360,13 @@ void BrcmFirmwareStore::requestResourceCallback(OSKextRequestTag requestTag, OSR
 {
     ResourceCallbackContext *context = (ResourceCallbackContext*)context1;
     
-    IOLockLock(context->me->mCompletionLock);
+    IOLockLock(context->lock);
+    if (context->detached) {
+        IOLockUnlock(context->lock);
+        IOLockFree(context->lock);
+        IOFree(context, sizeof(*context));
+        return;
+    }
 
     if (kOSReturnSuccess == result)
     {
@@ -356,17 +377,21 @@ void BrcmFirmwareStore::requestResourceCallback(OSKextRequestTag requestTag, OSR
     else
         DebugLog("OSKextRequestResource Callback: %08x.\n", result);
     
-    IOLockUnlock(context->me->mCompletionLock);
-    
-    // wake waiting task in performUpgrade (in IOLockSleep)...
-    IOLockWakeup(context->me->mCompletionLock, context->me, true);
+    context->done = true;
+    IOLockWakeup(context->lock, context, true);
+    IOLockUnlock(context->lock);
 }
 
 OSData* BrcmFirmwareStore::loadFirmwareFile(const char* filename, const char* suffix)
 {
-    IOLockLock(mCompletionLock);
-
-    ResourceCallbackContext context = { .me = this, .firmware = NULL };
+    auto context = static_cast<ResourceCallbackContext*>(IOMalloc(sizeof(ResourceCallbackContext)));
+    if (!context)
+        return NULL;
+    *context = { IOLockAlloc(), NULL, false, false };
+    if (!context->lock) {
+        IOFree(context, sizeof(*context));
+        return NULL;
+    }
 
     char path[PATH_MAX];
     snprintf(path, PATH_MAX, "%s.%s", filename, suffix);
@@ -374,23 +399,31 @@ OSData* BrcmFirmwareStore::loadFirmwareFile(const char* filename, const char* su
     OSReturn ret = OSKextRequestResource(OSKextGetCurrentIdentifier(),
                           path,
                           requestResourceCallback,
-                          &context,
+                          context,
                           NULL);
-    (void) ret;
     DebugLog("OSKextRequestResource: %08x\n", ret);
     
-    // wait for completion of the async read
-    IOLockSleep(mCompletionLock, this, 0);
-    
-    IOLockUnlock(mCompletionLock);
-    
-    if (context.firmware)
-    {
-        AlwaysLog("Loaded firmware \"%s\" from resources.\n", path);
-        return context.firmware;
+    IOLockLock(context->lock);
+    uint64_t deadline;
+    clock_interval_to_deadline(5000, kMillisecondScale, &deadline);
+    while (ret == kOSReturnSuccess && !context->done) {
+        int wait = IOLockSleepDeadline(context->lock, context, deadline, THREAD_UNINT);
+        if (wait == THREAD_TIMED_OUT && !context->done) {
+            // OSKext will invoke the callback on delivery, cancellation by unload, or expiry.
+            // Transfer ownership so a late callback never touches the caller's stack or store.
+            context->detached = true;
+            IOLockUnlock(context->lock);
+            return NULL;
+        }
     }
 
-    return NULL;
+    OSData* firmware = context->firmware;
+    IOLockUnlock(context->lock);
+    IOLockFree(context->lock);
+    IOFree(context, sizeof(*context));
+    if (firmware)
+        AlwaysLog("Loaded firmware \"%s\" from resources.\n", path);
+    return firmware;
 }
 
 OSData* BrcmFirmwareStore::loadFirmwareFiles(UInt16 vendorId, UInt16 productId, OSString* firmwareKey)
@@ -524,8 +557,10 @@ OSArray* BrcmFirmwareStore::getFirmware(UInt16 vendorId, UInt16 productId, OSStr
         // Add instructions to the firmwares cache
         if (instructions)
         {
-            mFirmwares->setObject(firmwareKey, instructions);
+            bool cached = mFirmwares->setObject(firmwareKey, instructions);
             instructions->release();
+            if (!cached)
+                instructions = NULL;
         }
     }
     else
