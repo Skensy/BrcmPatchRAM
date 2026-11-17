@@ -67,6 +67,9 @@ public:
     const USBCONFIGURATIONDESCRIPTOR* getFullConfigurationDescriptor(UInt8 configIndex);
     IOReturn getConfiguration(IOService* forClient, UInt8 *configNumber);
     IOReturn setConfiguration(IOService *forClient, UInt8 configValue, bool startInterfaceMatching=true);
+#ifdef TARGET_CATALINA
+    bool openBluetoothInterface(IOService* client, USBInterfaceShim* shim, USBPipeShim* interrupt);
+#endif
     bool findFirstInterface(USBInterfaceShim* shim);
     bool open(IOService *forClient, IOOptionBits options = 0, void *arg = 0 );
     void close(IOService *forClient, IOOptionBits options = 0);
@@ -119,9 +122,6 @@ public:
     inline OSObject* getValidatedPipe() { return m_pPipe; }
     
     IOReturn abort(void);
-#if defined(TARGET_ELCAPITAN) || defined(TARGET_CATALINA)
-    IOReturn abortSynchronous();
-#endif
     
     IOReturn read(IOMemoryDescriptor *	buffer,
                   UInt32		noDataTimeout,

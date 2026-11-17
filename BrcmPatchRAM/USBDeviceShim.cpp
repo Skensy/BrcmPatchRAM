@@ -222,7 +222,10 @@ IOReturn USBInterfaceShim::hciCommand(void* command, UInt16 length)
         .wLength = length,
         .pData = command
     };
-    return m_pInterface->DeviceRequest(&request);
+    IOReturn result = m_pInterface->GetDevice()->DeviceRequest(&request, 5000, 5000);
+    if (result == kIOReturnSuccess && request.wLenDone != length)
+        return kIOReturnUnderrun;
+    return result;
 }
 
 USBPipeShim::USBPipeShim()

@@ -106,16 +106,9 @@ private:
 #endif
     bool mSupportsHandshake = false;
 
-#ifdef TARGET_CATALINA
     UInt16 mExpectedOpcode = 0;
-    bool mReadPending = false;
-#endif
-    USBCOMPLETION mInterruptCompletion {};
-    IOBufferMemoryDescriptor* mReadBuffer = NULL;
-    
     volatile DeviceState mDeviceState = kInitialize;
     volatile uint16_t mFirmwareVersion = 0xFFFF;
-    IOLock* mCompletionLock = NULL;
     
 #ifdef DEBUG
     static const char* getState(DeviceState deviceState);
@@ -169,27 +162,24 @@ private:
     bool publishResourcePersonality(const char* classname);
 #endif
     BrcmFirmwareStore* getFirmwareStore();
+#ifdef TARGET_CATALINA
+    bool uploadFirmware();
+#else
     void uploadFirmware();
+#endif
+    static IOService* waitForClass(const char* name, uint64_t timeout);
     
     void printDeviceInfo();
-    int getDeviceStatus();
     
     bool setConfiguration(int configurationIndex);
     
     bool findInterface(USBInterfaceShim* interface);
     bool findPipe(USBPipeShim* pipe, uint8_t type, uint8_t direction);
     
-    bool continuousRead();
-#if defined(TARGET_ELCAPITAN) || defined(TARGET_CATALINA)
-    static void readCompletion(void* target, void* parameter, IOReturn status, uint32_t bytesTransferred);
-#else
-    static void readCompletion(void* target, void* parameter, IOReturn status, UInt32 bufferSizeRemaining);
-#endif
-    
     IOReturn hciCommand(void * command, uint16_t length);
-    IOReturn hciParseResponse(void* response, uint16_t length, void* output, uint8_t* outputLength);
+    IOReturn hciParseResponse(void* response, uint16_t length);
     
-    IOReturn bulkWrite(const void* data, uint16_t length);
+    IOReturn writeInstruction(OSData* data);
     
     uint16_t getFirmwareVersion();
     

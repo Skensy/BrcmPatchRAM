@@ -1,38 +1,64 @@
-#!/bin/bash
+#!/usr/bin/ruby
+require 'fileutils'
+require 'tmpdir'
 
-SRC_DIR=$(dirname "$0")
-pushd "$SRC_DIR" &>/dev/null
-SRC_DIR="$(pwd)"
-popd &>/dev/null
+abort "Usage: firmware_update.tool [Broadcom firmware directory]" if ARGV.length > 1
+input = ARGV.first
+unless input
+  print "Broadcom firmware directory: "
+  input = STDIN.gets.to_s.strip
+end
+input = File.expand_path(input)
+abort "Missing bcbtums.inf" unless File.file?(File.join(input, 'bcbtums.inf'))
 
-abort() {
-  echo "ERROR: $1"
-  exit 1
-}
+script = File.expand_path(__FILE__)
+Dir.chdir(__dir__)
+plists = %w[BrcmPatchRAM BrcmPatchRAM2 BrcmPatchRAM3].map { |name| "BrcmPatchRAM/#{name}-Info.plist" }
+targets = ['firmwares'] + plists
+pending = '.firmware-update-pending'
 
-if [ "$#" -le 1 ]; then
-  echo -n "Drag and drop Broadcom firmware directory and press [ENTER]: "
-  read FWDIR
-else
-  FWDIR="$1"
-  shift
-fi
+# A retry can restore a transaction interrupted between two renames.
+restore = lambda do
+  targets.reverse_each do |target|
+    saved = File.join(pending, 'old', target)
+    next unless File.exist?(saved)
+    FileUtils.rm_rf(target)
+    File.rename(saved, target)
+  end
+  FileUtils.remove_entry(pending)
+end
 
-if [ ! -f "${FWDIR}/bcbtums.inf" ]; then
-  abort "Broadcom firmware directory should contain bcbtums.inf file, but it is missing!"
-fi
-
-rm -rf "${SRC_DIR}/firmwares"
-
-"${SRC_DIR}/firmware.rb" "${FWDIR}" "${SRC_DIR}/firmwares" || abort "Cannot process Broadcom firmware directory"
-
-/usr/libexec/PlistBuddy -c "Delete :IOKitPersonalities" "${SRC_DIR}/BrcmPatchRAM/BrcmPatchRAM-Info.plist" 2>/dev/null
-/usr/libexec/PlistBuddy -c "Merge ${SRC_DIR}/firmwares/firmwares.plist" "${SRC_DIR}/BrcmPatchRAM/BrcmPatchRAM-Info.plist" || abort "Cannot update BrcmPatchRAM.kext"
-
-/usr/libexec/PlistBuddy -c "Delete :IOKitPersonalities" "${SRC_DIR}/BrcmPatchRAM/BrcmPatchRAM2-Info.plist" 2>/dev/null
-/usr/libexec/PlistBuddy -c "Merge ${SRC_DIR}/firmwares/firmwares2.plist" "${SRC_DIR}/BrcmPatchRAM/BrcmPatchRAM2-Info.plist" || abort "Cannot update BrcmPatchRAM.kext"
-
-/usr/libexec/PlistBuddy -c "Delete :IOKitPersonalities" "${SRC_DIR}/BrcmPatchRAM/BrcmPatchRAM3-Info.plist" 2>/dev/null
-/usr/libexec/PlistBuddy -c "Merge ${SRC_DIR}/firmwares/firmwares3.plist" "${SRC_DIR}/BrcmPatchRAM/BrcmPatchRAM3-Info.plist" || abort "Cannot update BrcmPatchRAM.kext"
-
-echo "All good, please rebuilt the KEXTs!"
+File.open(script) do |lock|
+  lock.flock(File::LOCK_EX)
+  restore.call if File.directory?(pending)
+  Dir.mktmpdir('.firmware-update-', Dir.pwd) do |stage|
+    FileUtils.mkdir_p(File.join(stage, 'old/BrcmPatchRAM'))
+    output = File.join(stage, 'firmwares')
+    abort "Firmware import failed" unless system('./firmware.rb', input, output)
+    plists.each_with_index do |plist, index|
+      copy = File.join(stage, plist)
+      FileUtils.mkdir_p(File.dirname(copy))
+      FileUtils.cp(plist, copy)
+      fragment = index.zero? ? 'firmwares.plist' : "firmwares#{index + 1}.plist"
+      Dir.chdir(output) do
+        abort "Could not clear #{plist}" unless system('/usr/libexec/PlistBuddy', '-c', 'Delete :IOKitPersonalities', copy)
+        abort "Could not merge #{plist}" unless system('/usr/libexec/PlistBuddy', '-c', "Merge #{fragment}", copy)
+        abort "Invalid #{plist}" unless system('/usr/bin/plutil', '-lint', copy)
+      end
+    end
+    File.rename(stage, pending)
+    begin
+      targets.each do |target|
+        File.rename(target, File.join(pending, 'old', target))
+        File.rename(File.join(pending, target), target)
+      end
+      File.rename(pending, stage)
+    ensure
+      if File.directory?(pending)
+        restore.call
+        Dir.mkdir(stage)
+      end
+    end
+  end
+end
+puts "Firmware and kext plists updated."

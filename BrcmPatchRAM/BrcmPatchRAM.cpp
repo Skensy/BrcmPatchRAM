@@ -32,7 +32,6 @@
 #include <libkern/OSKextLib.h>
 
 #include "Common.h"
-#include "hci.h"
 #include "BrcmPatchRAM.h"
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -208,10 +207,6 @@ IOService* BrcmPatchRAM::probe(IOService *provider, SInt32 *probeScore)
     if (!mLoadFirmwareLock)
         return NULL;
 #endif
-
-    mCompletionLock = IOLockAlloc();
-    if (!mCompletionLock)
-        return NULL;
 
     mDevice.setDevice(provider);
     if (!mDevice.getValidatedDevice())
@@ -393,11 +388,7 @@ void BrcmPatchRAM::stop(IOService* provider)
 
     PMstop();
 
-    if (mCompletionLock)
-    {
-        IOLockFree(mCompletionLock);
-        mCompletionLock = NULL;
-    }
+
 #ifndef NON_RESIDENT
     if (mWorkLock)
     {
@@ -530,7 +521,6 @@ void BrcmPatchRAM::uploadFirmware()
                         AlwaysLog("[%04x:%04x]: Firmware upgrade not needed.\n", mVendorId, mProductId);
                 else
                     AlwaysLog("[%04x:%04x]: Firmware upgrade failed.\n", mVendorId, mProductId);
-                OSSafeReleaseNULL(mReadBuffer); // mReadBuffer is allocated by performUpgrade but not released
             }
             mInterface.close(this);
         }
@@ -827,7 +817,7 @@ BrcmFirmwareStore* BrcmPatchRAM::getFirmwareStore()
     if (!mFirmwareStore)
     {
         // check to see if it already loaded
-        IOService* tmpStore = waitForMatchingService(serviceMatching(kBrcmFirmwareStoreService), 0);
+        IOService* tmpStore = waitForClass(kBrcmFirmwareStoreService, 0);
         mFirmwareStore = OSDynamicCast(BrcmFirmwareStore, tmpStore);
         if (!mFirmwareStore)
         {
@@ -836,7 +826,7 @@ BrcmFirmwareStore* BrcmPatchRAM::getFirmwareStore()
             // not loaded, so publish personality...
             publishResourcePersonality(kBrcmFirmwareStoreService);
             // and wait...
-            tmpStore = waitForMatchingService(serviceMatching(kBrcmFirmwareStoreService), 2000UL*1000UL*1000UL);
+            tmpStore = waitForClass(kBrcmFirmwareStoreService, 2000UL*1000UL*1000UL);
             mFirmwareStore = OSDynamicCast(BrcmFirmwareStore, tmpStore);
             if (!mFirmwareStore && tmpStore)
                 tmpStore->release();
@@ -844,7 +834,7 @@ BrcmFirmwareStore* BrcmPatchRAM::getFirmwareStore()
 
 #ifdef NON_RESIDENT
         // also need BrcmPatchRAMResidency
-        IOService* tmpResidency = waitForMatchingService(serviceMatching(kBrcmPatchRAMResidency), 0);
+        IOService* tmpResidency = waitForClass(kBrcmPatchRAMResidency, 0);
         IOService* residency = OSDynamicCast(BrcmPatchRAMResidency, tmpResidency);
         if (!residency)
         {
@@ -853,7 +843,7 @@ BrcmFirmwareStore* BrcmPatchRAM::getFirmwareStore()
             // not loaded, so publish personality...
             publishResourcePersonality(kBrcmPatchRAMResidency);
             // and wait...
-            tmpResidency = waitForMatchingService(serviceMatching(kBrcmPatchRAMResidency), 2000UL*1000UL*1000UL);
+            tmpResidency = waitForClass(kBrcmPatchRAMResidency, 2000UL*1000UL*1000UL);
             residency = OSDynamicCast(BrcmPatchRAMResidency, tmpResidency);
             if (tmpResidency)
                 tmpResidency->release();
@@ -889,22 +879,6 @@ void BrcmPatchRAM::printDeviceInfo()
               mDevice.getDeviceRelease(),
               product,
               manufacturer);
-}
-
-int BrcmPatchRAM::getDeviceStatus()
-{
-    IOReturn result;
-    USBStatus status;
-    
-    if ((result = mDevice.getDeviceStatus(this, &status)) != kIOReturnSuccess)
-    {
-        AlwaysLog("[%04x:%04x]: Unable to get device status (\"%s\" 0x%08x).\n", mVendorId, mProductId, stringFromReturn(result), result);
-        return 0;
-    }
-    else
-        DebugLog("[%04x:%04x]: Device status 0x%08x.\n", mVendorId, mProductId, (int)status);
-    
-    return (int)status;
 }
 
 bool BrcmPatchRAM::setConfiguration(int configurationIndex)
@@ -999,393 +973,6 @@ bool BrcmPatchRAM::findPipe(USBPipeShim* shim, UInt8 type, UInt8 direction)
 #endif
 
     return true;
-}
-
-bool BrcmPatchRAM::continuousRead()
-{
-    if (!mReadBuffer)
-    {
-        mReadBuffer = IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task, 0, 0x200);
-        if (!mReadBuffer)
-        {
-            AlwaysLog("[%04x:%04x]: continuousRead - failed to allocate read buffer.\n", mVendorId, mProductId);
-            return false;
-        }
-#ifndef TARGET_ELCAPITAN
-        mInterruptCompletion.target = this;
-#else
-        mInterruptCompletion.owner = this;
-#endif
-        mInterruptCompletion.action = readCompletion;
-        mInterruptCompletion.parameter = NULL;
-    }
-
-    IOReturn result = mReadBuffer->prepare();
-    if (result != kIOReturnSuccess)
-    {
-        AlwaysLog("[%04x:%04x]: continuousRead - failed to prepare buffer (0x%08x)\n", mVendorId, mProductId, result);
-        return false;
-    }
-
-    if ((result = mInterruptPipe.read(mReadBuffer, 0, 0, mReadBuffer->getLength(), &mInterruptCompletion)) != kIOReturnSuccess)
-    {
-        AlwaysLog("[%04x:%04x]: continuousRead - Failed to queue read (0x%08x)\n", mVendorId, mProductId, result);
-
-        if (result == kIOUSBPipeStalled)
-        {
-            mInterruptPipe.clearStall();
-            result = mInterruptPipe.read(mReadBuffer, 0, 0, mReadBuffer->getLength(), &mInterruptCompletion);
-            
-            if (result != kIOReturnSuccess)
-            {
-                AlwaysLog("[%04x:%04x]: continuousRead - Failed, read dead (0x%08x)\n", mVendorId, mProductId, result);
-                return false;
-            }
-        }
-    }
-
-    return true;
-}
-
-#ifndef TARGET_ELCAPITAN
-void BrcmPatchRAM::readCompletion(void* target, void* parameter, IOReturn status, UInt32 bufferSizeRemaining)
-#else
-void BrcmPatchRAM::readCompletion(void* target, void* parameter, IOReturn status, uint32_t bytesTransferred)
-#endif
-{
-    BrcmPatchRAM *me = (BrcmPatchRAM*)target;
-
-    IOLockLock(me->mCompletionLock);
-
-    IOReturn result = me->mReadBuffer->complete();
-    if (result != kIOReturnSuccess)
-        DebugLog("[%04x:%04x]: ReadCompletion failed to complete read buffer (\"%s\" 0x%08x).\n", me->mVendorId, me->mProductId, me->stringFromReturn(result), result);
-
-    switch (status)
-    {
-        case kIOReturnSuccess:
-#ifndef TARGET_ELCAPITAN
-            me->hciParseResponse(me->mReadBuffer->getBytesNoCopy(), me->mReadBuffer->getLength() - bufferSizeRemaining, NULL, NULL);
-#else
-            me->hciParseResponse(me->mReadBuffer->getBytesNoCopy(), bytesTransferred, NULL, NULL);
-#endif
-            break;
-        case kIOReturnAborted:
-            AlwaysLog("[%04x:%04x]: readCompletion - Return aborted (0x%08x)\n", me->mVendorId, me->mProductId, status);
-            me->mDeviceState = kUpdateAborted;
-            break;
-        case kIOReturnNoDevice:
-            AlwaysLog("[%04x:%04x]: readCompletion - No such device (0x%08x)\n", me->mVendorId, me->mProductId, status);
-            me->mDeviceState = kUpdateAborted;
-            break;
-        case kIOUSBTransactionTimeout:
-            AlwaysLog("[%04x:%04x]: readCompletion - Transaction timeout (0x%08x)\n", me->mVendorId, me->mProductId, status);
-            break;
-        case kIOReturnNotResponding:
-            AlwaysLog("[%04x:%04x]: Not responding - Delaying next read.\n", me->mVendorId, me->mProductId);
-            me->mInterruptPipe.clearStall();
-            me->mDeviceState = kUpdateAborted;
-            break;
-        default:
-            AlwaysLog("[%04x:%04x]: readCompletion - Unknown error (0x%08x)\n", me->mVendorId, me->mProductId, status);
-            me->mDeviceState = kUpdateAborted;
-            break;
-    }
-
-    IOLockUnlock(me->mCompletionLock);
-
-    // wake waiting task in performUpgrade (in IOLockSleep)...
-    IOLockWakeup(me->mCompletionLock, me, true);
-}
-
-IOReturn BrcmPatchRAM::hciCommand(void * command, UInt16 length)
-{
-    IOReturn result;
-    if ((result = mInterface.hciCommand(command, length)) != kIOReturnSuccess)
-        AlwaysLog("[%04x:%04x]: device request failed (\"%s\" 0x%08x).\n", mVendorId, mProductId, stringFromReturn(result), result);
-    
-    return result;
-}
-
-IOReturn BrcmPatchRAM::hciParseResponse(void* response, UInt16 length, void* output, UInt8* outputLength)
-{
-    HCI_RESPONSE* header = (HCI_RESPONSE*)response;
-    IOReturn result = kIOReturnSuccess;
-
-    switch (header->eventCode)
-    {
-        case HCI_EVENT_COMMAND_COMPLETE:
-        {
-            HCI_COMMAND_COMPLETE* event = (HCI_COMMAND_COMPLETE*)response;
-            
-            switch (event->opcode)
-            {
-                case HCI_OPCODE_READ_VERBOSE_CONFIG:
-                    DebugLog("[%04x:%04x]: READ VERBOSE CONFIG complete (status: 0x%02x, length: %d bytes).\n",
-                             mVendorId, mProductId, event->status, header->length);
-                    
-                    mFirmwareVersion = *(UInt16*)(((char*)response) + 10);
-                    
-                    DebugLog("[%04x:%04x]: Firmware version: v%d.\n",
-                             mVendorId, mProductId, mFirmwareVersion + 0x1000);
-                    
-                    // Device does not require a firmware patch at this time
-                    if (mFirmwareVersion > 0)
-                        mDeviceState = kUpdateNotNeeded;
-                    else
-                        mDeviceState = kFirmwareVersion;
-                    break;
-                case HCI_OPCODE_DOWNLOAD_MINIDRIVER:
-                    DebugLog("[%04x:%04x]: DOWNLOAD MINIDRIVER complete (status: 0x%02x, length: %d bytes).\n",
-                             mVendorId, mProductId, event->status, header->length);
-                    
-                    mDeviceState = kMiniDriverComplete;
-                    break;
-                case HCI_OPCODE_LAUNCH_RAM:
-                    //DebugLog("[%04x:%04x]: LAUNCH RAM complete (status: 0x%02x, length: %d bytes).\n",
-                    //          mVendorId, mProductId, event->status, header->length);
-                    
-                    mDeviceState = kInstructionWritten;
-                    break;
-                case HCI_OPCODE_END_OF_RECORD:
-                    DebugLog("[%04x:%04x]: END OF RECORD complete (status: 0x%02x, length: %d bytes).\n",
-                             mVendorId, mProductId, event->status, header->length);
-                    
-                    mDeviceState = kFirmwareWritten;
-                    break;
-                case HCI_OPCODE_RESET:
-                    DebugLog("[%04x:%04x]: RESET complete (status: 0x%02x, length: %d bytes).\n",
-                             mVendorId, mProductId, event->status, header->length);
-                    
-                    mDeviceState = mDeviceState == kPreInitialize ? kInitialize : kResetComplete;
-                    break;
-                default:
-                    DebugLog("[%04x:%04x]: Event COMMAND COMPLETE (opcode 0x%04x, status: 0x%02x, length: %d bytes).\n",
-                             mVendorId, mProductId, event->opcode, event->status, header->length);
-                    break;
-            }
-            
-            if (output && outputLength)
-            {
-                bzero(output, *outputLength);
-                
-                // Return the received data
-                if (*outputLength >= length)
-                {
-                    DebugLog("[%04x:%04x]: Returning output data %d bytes.\n", mVendorId, mProductId, length);
-                    
-                    *outputLength = length;
-                    memcpy(output, response, length);
-                }
-                else
-                    // Not enough buffer space for data
-                    result = kIOReturnMessageTooLarge;
-            }
-            break;
-        }
-        case HCI_EVENT_NUM_COMPLETED_PACKETS:
-            DebugLog("[%04x:%04x]: Number of completed packets.\n", mVendorId, mProductId);
-            break;
-        case HCI_EVENT_CONN_COMPLETE:
-            DebugLog("[%04x:%04x]: Connection complete event.\n", mVendorId, mProductId);
-            break;
-        case HCI_EVENT_DISCONN_COMPLETE:
-            DebugLog("[%04x:%04x]: Disconnection complete. event\n", mVendorId, mProductId);
-            break;
-        case HCI_EVENT_HARDWARE_ERROR:
-            DebugLog("[%04x:%04x]: Hardware error\n", mVendorId, mProductId);
-            break;
-        case HCI_EVENT_MODE_CHANGE:
-            DebugLog("[%04x:%04x]: Mode change event.\n", mVendorId, mProductId);
-            break;
-        case HCI_EVENT_LE_META:
-            DebugLog("[%04x:%04x]: Low-Energy meta event.\n", mVendorId, mProductId);
-            break;
-        case HCI_EVENT_VENDOR:
-            DebugLog("[%04x:%04x]: Vendor specific event.\n", mVendorId, mProductId);
-            if (mSupportsHandshake) {
-                // Device is ready for reset.
-                mDeviceState = kResetWrite;
-            }
-            break;
-        default:
-            DebugLog("[%04x:%04x]: Unknown event code (0x%02x).\n", mVendorId, mProductId, header->eventCode);
-            break;
-    }
-    
-    return result;
-}
-
-IOReturn BrcmPatchRAM::bulkWrite(const void* data, UInt16 length)
-{
-    IOReturn result;
-    
-    if (IOMemoryDescriptor* buffer = IOMemoryDescriptor::withAddress((void*)data, length, kIODirectionIn))
-    {
-        if ((result = buffer->prepare()) == kIOReturnSuccess)
-        {
-            if ((result = mBulkPipe.write(buffer, 0, 0, buffer->getLength(), NULL)) == kIOReturnSuccess)
-            {
-                //DEBUG_LOG("%s: Wrote %d bytes to bulk pipe.\n", getName(), length);
-            }
-            else
-                AlwaysLog("[%04x:%04x]: Failed to write to bulk pipe (\"%s\" 0x%08x).\n", mVendorId, mProductId, stringFromReturn(result), result);
-        }
-        else
-            AlwaysLog("[%04x:%04x]: Failed to prepare bulk write memory buffer (\"%s\" 0x%08x).\n", mVendorId, mProductId, stringFromReturn(result), result);
-        
-        if ((result = buffer->complete()) != kIOReturnSuccess)
-            AlwaysLog("[%04x:%04x]: Failed to complete bulk write memory buffer (\"%s\" 0x%08x).\n", mVendorId, mProductId, stringFromReturn(result), result);
-        
-        buffer->release();
-    }
-    else
-    {
-        AlwaysLog("[%04x:%04x]: Unable to allocate bulk write buffer.\n", mVendorId, mProductId);
-        result = kIOReturnNoMemory;
-    }
-    
-    return result;
-}
-
-bool BrcmPatchRAM::performUpgrade()
-{
-    BrcmFirmwareStore* firmwareStore;
-    OSArray* instructions = NULL;
-    OSCollectionIterator* iterator = NULL;
-    OSData* data;
-#ifdef DEBUG
-    DeviceState previousState = kUnknown;
-#endif
-
-    IOLockLock(mCompletionLock);
-    mDeviceState = kPreInitialize;
-
-    while (true)
-    {
-#ifdef DEBUG
-        if (mDeviceState != kInstructionWrite && mDeviceState != kInstructionWritten)
-            DebugLog("[%04x:%04x]: State \"%s\" --> \"%s\".\n", mVendorId, mProductId, getState(previousState), getState(mDeviceState));
-        previousState = mDeviceState;
-#endif
-
-        // Break out when done
-        if (mDeviceState == kUpdateAborted || mDeviceState == kUpdateComplete || mDeviceState == kUpdateNotNeeded)
-            break;
-
-        // Note on following switch/case:
-        //   use 'break' when a response from io completion callback is expected
-        //   use 'continue' when a change of state with no expected response (loop again)
-
-        switch (mDeviceState)
-        {
-            case kPreInitialize:
-                hciCommand(&HCI_RESET, sizeof(HCI_RESET));
-                break;
-
-            case kInitialize:
-                IOSleep(mPostResetDelay);
-                hciCommand(&HCI_VSC_READ_VERBOSE_CONFIG, sizeof(HCI_VSC_READ_VERBOSE_CONFIG));
-                break;
-
-            case kFirmwareVersion:
-                // Unable to retrieve firmware store
-                if (!(firmwareStore = getFirmwareStore()))
-                {
-                    mDeviceState = kUpdateAborted;
-                    continue;
-                }
-                instructions = firmwareStore->getFirmware(mVendorId, mProductId, OSDynamicCast(OSString, getProperty(kFirmwareKey)));
-                // Unable to retrieve firmware instructions
-                if (!instructions)
-                {
-                    mDeviceState = kUpdateAborted;
-                    continue;
-                }
-
-                // Initiate firmware upgrade
-                hciCommand(&HCI_VSC_DOWNLOAD_MINIDRIVER, sizeof(HCI_VSC_DOWNLOAD_MINIDRIVER));
-                break;
-
-            case kMiniDriverComplete:
-                // Should never happen, but semantically causes a leak.
-                OSSafeReleaseNULL(iterator);
-                // Write firmware data to bulk pipe
-                iterator = OSCollectionIterator::withCollection(instructions);
-                if (!iterator)
-                {
-                    mDeviceState = kUpdateAborted;
-                    continue;
-                }
-
-                // If this IOSleep is not issued, the device is not ready to receive
-                // the firmware instructions and we will deadlock due to lack of
-                // responses.
-                IOSleep(mInitialDelay);
-
-                // Write first instruction to trigger response
-                if ((data = OSDynamicCast(OSData, iterator->getNextObject())))
-                    bulkWrite(data->getBytesNoCopy(), data->getLength());
-                break;
-
-            case kInstructionWrite:
-                // should never happen, but would cause a crash
-                if (!iterator)
-                {
-                    mDeviceState = kUpdateAborted;
-                    continue;
-                }
-
-                if ((data = OSDynamicCast(OSData, iterator->getNextObject())))
-                    bulkWrite(data->getBytesNoCopy(), data->getLength());
-                else
-                    // Firmware data fully written
-                    hciCommand(&HCI_VSC_END_OF_RECORD, sizeof(HCI_VSC_END_OF_RECORD));
-                break;
-
-            case kInstructionWritten:
-                mDeviceState = kInstructionWrite;
-                continue;
-
-            case kFirmwareWritten:
-                if (!mSupportsHandshake) {
-                    IOSleep(mPreResetDelay);
-                    hciCommand(&HCI_RESET, sizeof(HCI_RESET));
-                }
-                break;
-                
-            case kResetWrite:
-                hciCommand(&HCI_RESET, sizeof(HCI_RESET));
-                break;
-
-            case kResetComplete:
-                IOSleep(mPostResetDelay);
-                getDeviceStatus();
-                mDeviceState = kUpdateComplete;
-                continue;
-
-            case kUnknown:
-            case kUpdateNotNeeded:
-            case kUpdateComplete:
-            case kUpdateAborted:
-                DebugLog("Error: kUnkown/kUpdateComplete/kUpdateAborted cases should be unreachable.\n");
-                break;
-        }
-
-        // queue async read
-        if (!continuousRead())
-        {
-            mDeviceState = kUpdateAborted;
-            continue;
-        }
-        // wait for completion of the async read
-        IOLockSleep(mCompletionLock, this, 0);
-    }
-
-    IOLockUnlock(mCompletionLock);
-    OSSafeReleaseNULL(iterator);
-
-    return mDeviceState == kUpdateComplete || mDeviceState == kUpdateNotNeeded;
 }
 
 bool BrcmPatchRAM::supportsHandshake(UInt16 vid, UInt16 did)

@@ -203,7 +203,7 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
         return NULL;
     }
     const UInt8* end = data + firmwareData->getLength();
-    UInt32 address = 0;
+    UInt32 baseAddress = 0;
     UInt8 binary[0x110];
     
     if (*data != HEX_LINE_PREFIX)
@@ -250,7 +250,7 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
             // Data
             case REC_TYPE_DATA:
             {
-                address = (address & 0xFFFF0000) | addr;
+                UInt32 address = baseAddress + addr;
                 
                 // Reserved 4 bytes for the address
                 if (length > 251)
@@ -282,8 +282,7 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
                 if (length != 2 || addr)
                     goto exit_error;
                 // Segment address multiplied by 16
-                address = binary[4] << 8 | binary[5];
-                address <<= 4;
+                baseAddress = ((binary[4] << 8) | binary[5]) << 4;
                 break;
                 // Start Segment Address
             case REC_TYPE_SSA:
@@ -295,7 +294,7 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
                 if (length != 2 || addr)
                     goto exit_error;
                 // Set new higher 16 bits of the current address
-                address = UInt32(binary[4]) << 24 | binary[5] << 16;
+                baseAddress = UInt32(binary[4]) << 24 | binary[5] << 16;
                 break;
                 // Start Linear Address
             case REC_TYPE_SLA:

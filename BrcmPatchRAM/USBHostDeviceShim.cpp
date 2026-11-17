@@ -101,6 +101,8 @@ IOReturn USBDeviceShim::getDeviceStatus(IOService* forClient, USBStatus *status)
     request.wLength       = sizeof(stat);
     uint32_t bytesTransferred = 0;
     IOReturn result = m_pDevice->deviceRequest(forClient, request, &stat, bytesTransferred, kUSBHostStandardRequestCompletionTimeout);
+    if (result == kIOReturnSuccess && bytesTransferred != sizeof(stat))
+        return kIOReturnUnderrun;
     *status = stat;
     return result;
 }
@@ -169,6 +171,38 @@ bool USBDeviceShim::findFirstInterface(USBInterfaceShim* shim)
     DebugLog("getValidatedInterface returns %p\n", shim->getValidatedInterface());
     return shim->getValidatedInterface() != NULL;
 }
+
+#ifdef TARGET_CATALINA
+bool USBDeviceShim::openBluetoothInterface(IOService* client, USBInterfaceShim* shim, USBPipeShim* interrupt)
+{
+    auto iterator = m_pDevice->getChildIterator(gIOServicePlane);
+    if (!iterator)
+        return false;
+    bool found = false;
+    while (auto child = iterator->getNextObject()) {
+        auto interface = OSDynamicCast(IOUSBHostInterface, child);
+        if (!interface)
+            continue;
+        auto desc = interface->getInterfaceDescriptor();
+        // Broadcom also ships HCI interfaces with vendor-specific class 0xff.
+        if (!desc || (desc->bInterfaceClass != 0xe0 && desc->bInterfaceClass != 0xff)
+            || desc->bInterfaceSubClass != 1 || desc->bInterfaceProtocol != 1)
+            continue;
+        shim->setInterface(interface);
+        if (!shim->open(client))
+            continue;
+        if (shim->findPipe(interrupt, kEndpointTypeInterrupt, kEndpointDirectionIn)) {
+            found = true;
+            break;
+        }
+        shim->close(client);
+    }
+    iterator->release();
+    if (!found)
+        shim->setInterface(nullptr);
+    return found;
+}
+#endif
 
 bool USBDeviceShim::open(IOService *forClient, IOOptionBits options, void *arg)
 {
@@ -382,11 +416,6 @@ void USBPipeShim::setPipe(OSObject* pipe)
         prev->release();
 }
 
-IOReturn USBPipeShim::abortSynchronous()
-{
-    return m_pPipe->abort(IOUSBHostIOSource::kAbortSynchronous);
-}
-
 IOReturn USBPipeShim::abort(void)
 {
     return m_pPipe->abort();
@@ -442,6 +471,8 @@ IOReturn USBPipeShim::write(IOMemoryDescriptor *	buffer,
     {
         uint32_t bytesTransfered;
         result = m_pPipe->io(buffer, (uint32_t)reqCount, bytesTransfered, completionTimeout);
+        if (result == kIOReturnSuccess && bytesTransfered != reqCount)
+            result = kIOReturnUnderrun;
     }
     return result;
 }

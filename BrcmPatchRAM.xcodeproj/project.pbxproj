@@ -29,6 +29,7 @@
 		CE8DA13625182BBA008C44E8 /* libkmod.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE8DA13225182BB2008C44E8 /* libkmod.a */; };
 		CE8DA13725182BBD008C44E8 /* libkmod.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE8DA13225182BB2008C44E8 /* libkmod.a */; };
 		CE8DA716235248C300BCE180 /* BrcmPatchRAM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D4F91B051A2998CE0030D10D /* BrcmPatchRAM.cpp */; };
+		7B0200010000000000000001 /* FirmwareUpload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7B0200010000000000000000 /* FirmwareUpload.cpp */; };
 		CE8DA71C235248C300BCE180 /* BrcmPatchRAM.h in Headers */ = {isa = PBXBuildFile; fileRef = D4F91B031A2998CE0030D10D /* BrcmPatchRAM.h */; };
 		CE8DA71E235248C300BCE180 /* BrcmFirmwareStore.h in Headers */ = {isa = PBXBuildFile; fileRef = D4049E561A3252B1003A1893 /* BrcmFirmwareStore.h */; };
 		CE8DA720235248C300BCE180 /* Common.h in Headers */ = {isa = PBXBuildFile; fileRef = D454276C1A2A07A7000B0964 /* Common.h */; };
@@ -42,9 +43,11 @@
 		D346F7C123475DF60073A60D /* USBDeviceShim.h in Headers */ = {isa = PBXBuildFile; fileRef = D4E0A25B1BA30FD300A5FE05 /* USBDeviceShim.h */; };
 		D346F7C223475DF60073A60D /* hci.h in Headers */ = {isa = PBXBuildFile; fileRef = D45427691A2A045E000B0964 /* hci.h */; };
 		D3DDE0882349F788004B3498 /* BrcmPatchRAM3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D3DDE0872349F788004B3498 /* BrcmPatchRAM3.cpp */; };
+		7B0200010000000000000002 /* FirmwareUpload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7B0200010000000000000000 /* FirmwareUpload.cpp */; };
 		D45C93E01BA3549A006D3FB8 /* USBHostDeviceShim.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D45C93DF1BA3549A006D3FB8 /* USBHostDeviceShim.cpp */; };
 		D4E0A25E1BA30FD300A5FE05 /* USBDeviceShim.h in Headers */ = {isa = PBXBuildFile; fileRef = D4E0A25B1BA30FD300A5FE05 /* USBDeviceShim.h */; };
 		ED5817BE1B7A6AEF006C5522 /* BrcmPatchRAM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D4F91B051A2998CE0030D10D /* BrcmPatchRAM.cpp */; };
+		7B0200010000000000000003 /* FirmwareUpload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7B0200010000000000000000 /* FirmwareUpload.cpp */; };
 		ED5817C11B7A6AEF006C5522 /* BrcmPatchRAM.h in Headers */ = {isa = PBXBuildFile; fileRef = D4F91B031A2998CE0030D10D /* BrcmPatchRAM.h */; };
 		ED5817C21B7A6AEF006C5522 /* BrcmFirmwareStore.h in Headers */ = {isa = PBXBuildFile; fileRef = D4049E561A3252B1003A1893 /* BrcmFirmwareStore.h */; };
 		EDA03B781BA47A0E005BDCA2 /* hci.h in Headers */ = {isa = PBXBuildFile; fileRef = D45427691A2A045E000B0964 /* hci.h */; };
@@ -237,6 +240,7 @@
 		D346F7C923475DF60073A60D /* BrcmPatchRAM3.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrcmPatchRAM3.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		D346F7CA23475DF70073A60D /* BrcmPatchRAM3-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "BrcmPatchRAM3-Info.plist"; sourceTree = "<group>"; };
 		D3DDE0872349F788004B3498 /* BrcmPatchRAM3.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BrcmPatchRAM3.cpp; sourceTree = "<group>"; };
+		7B0200010000000000000000 /* FirmwareUpload.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = FirmwareUpload.cpp; sourceTree = "<group>"; };
 		D4049E551A3252B1003A1893 /* BrcmFirmwareStore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BrcmFirmwareStore.cpp; sourceTree = "<group>"; };
 		D4049E561A3252B1003A1893 /* BrcmFirmwareStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BrcmFirmwareStore.h; sourceTree = "<group>"; };
 		D45427691A2A045E000B0964 /* hci.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = hci.h; sourceTree = "<group>"; };
@@ -420,6 +424,7 @@
 				D4F91B031A2998CE0030D10D /* BrcmPatchRAM.h */,
 				D4F91B051A2998CE0030D10D /* BrcmPatchRAM.cpp */,
 				D3DDE0872349F788004B3498 /* BrcmPatchRAM3.cpp */,
+				7B0200010000000000000000 /* FirmwareUpload.cpp */,
 				D4F91B011A2998CE0030D10D /* Supporting Files */,
 				D45427691A2A045E000B0964 /* hci.h */,
 				D454276C1A2A07A7000B0964 /* Common.h */,
@@ -887,6 +892,7 @@
 			files = (
 				CE8DA72D23524E4500BCE180 /* USBDeviceShim.cpp in Sources */,
 				CE8DA716235248C300BCE180 /* BrcmPatchRAM.cpp in Sources */,
+				7B0200010000000000000001 /* FirmwareUpload.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -895,6 +901,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D3DDE0882349F788004B3498 /* BrcmPatchRAM3.cpp in Sources */,
+				7B0200010000000000000002 /* FirmwareUpload.cpp in Sources */,
 				D346F7BB23475DF60073A60D /* USBHostDeviceShim.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -904,6 +911,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				ED5817BE1B7A6AEF006C5522 /* BrcmPatchRAM.cpp in Sources */,
+				7B0200010000000000000003 /* FirmwareUpload.cpp in Sources */,
 				D45C93E01BA3549A006D3FB8 /* USBHostDeviceShim.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

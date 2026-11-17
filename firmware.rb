@@ -24,14 +24,13 @@ def parse_inf(inf_path)
   device = nil
   
   if !File.exist?(inf_path)
-    puts "Error: bcbtums.inf not found in firmware input folder."
-    exit
+    abort "bcbtums.inf not found in firmware input folder."
   end
 
   File.open(inf_path).each do |line|
 
     # When in the device block, parse all devices
-    if in_device_block == 1 and line =~ /^%([\w\.]*)%=.*(RAMUSB\w*),\s*USB\\VID_([0-9A-F]{4})\&PID_([0-9A-F]{4})\s*;\s(.*?)\r\n$/
+    if in_device_block == 1 and line =~ /^%([\w\.]*)%=.*(RAMUSB\w*),\s*USB\\VID_([0-9A-F]{4})\&PID_([0-9A-F]{4})\s*;\s(.*?)\r?\n?\z/
       # Example match: %BRCM20702.DeviceDesc%=BlueRAMUSB21E8,          USB\VID_0A5C&PID_21E8       ; 20702A1 dongles
       # new Example:   %BRCM20702.DeviceDesc%=RAMUSB21E8,          USB\VID_0A5C&PID_21E8       ; 20702A1 dongles
       device = OpenStruct.new
@@ -133,10 +132,10 @@ def create_firmwares(devices, input_path, output_path)
       File.write(File.join(device_path, output_file), data_compressed)
       
       # Determine latest firmware for the current device and symlink
-      latest_firmware = Dir.glob(File.join(device_path, "*.zhx")).sort_by{ |f| f[-8..1] }.reverse.each.first
+      latest_firmware = Dir.glob(File.join(device_path, "*.zhx")).max_by { |f| f[/_v(\d+)\.zhx\z/, 1].to_i }
       
       if File.exist?(File.basename(latest_firmware))
-        puts "Firmware symlink #{File.basename(latestfirmware)} already created for another device."
+        puts "Firmware symlink #{File.basename(latest_firmware)} already created for another device."
       else  
         FileUtils::symlink("./" + File.join(device_folder, File.basename(latest_firmware)), File.basename(latest_firmware))
       end
@@ -275,8 +274,7 @@ def create_readme(devices, output_path)
 end
 
 if ARGV.length != 2
-  puts "Usage: firmware.rb <input folder> <output folder>"
-  exit
+  abort "Usage: firmware.rb <input folder> <output folder>"
 end
 
 input = File.expand_path(ARGV.shift)
@@ -285,8 +283,20 @@ output = File.expand_path(ARGV.shift)
 # Parse Windows INF file into device objects
 devices = parse_inf(File.join(input, "bcbtums.inf"))
 
+mapped = devices.map(&:firmware).compact.map(&:downcase).uniq
+abort "No firmware mappings found in bcbtums.inf" if mapped.empty?
+available = Dir.glob(File.join(input, "*.hex")).map { |path| File.basename(path).downcase }
+missing = mapped - available
+abort "Missing firmware files: #{missing.join(', ')}" unless missing.empty?
+
 # Extract and compress all device firmwares
 create_firmwares(devices, input, output)
+
+devices.each do |device|
+  next unless device.firmware
+  name = "#{File.basename(device.firmware, File.extname(device.firmware))}_v#{device.firmwareVersion}.zhx"
+  abort "Missing firmware #{name}" unless File.file?(File.join(output, name))
+end
 
 # Generate plist extract
 create_plist(devices, output, 1)
