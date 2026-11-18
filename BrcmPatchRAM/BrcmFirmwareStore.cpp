@@ -332,8 +332,10 @@ bool BrcmFirmwareStore::start(IOService *provider)
         return false;
     
     mDataLock = IOLockAlloc();
-    if (!mDataLock)
+    if (!mDataLock) {
+        OSSafeReleaseNULL(mFirmwares);
         return false;
+    }
 
     registerService();
 

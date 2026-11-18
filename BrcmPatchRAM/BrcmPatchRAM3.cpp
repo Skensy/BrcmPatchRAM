@@ -166,13 +166,13 @@ IOService* BrcmPatchRAM::probe(IOService *provider, SInt32 *probeScore)
 
     DebugLog("Device %s handshake.\n", mSupportsHandshake ? "supports" : "doesn't support");
     
-    /* Get firmware for device. */
+    /* Preload disk-backed firmware before opening the device. */
     firmwareKey = OSDynamicCast(OSString, getProperty(kFirmwareKey));
     
     if (firmwareKey) {
         firmwareStore = getFirmwareStore();
         
-        if (firmwareStore)
+        if (firmwareStore && firmwareStore->getProperty("EmbeddedFirmware") != kOSBooleanTrue)
             firmwareStore->getFirmware(mVendorId, mProductId, firmwareKey);
     }
     /* Release device again as probe() shouldn't alter it's state. */

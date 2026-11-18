@@ -26,6 +26,8 @@
 			<string>as.acidanthera.BrcmFirmwareStore</string>
 			<key>IOClass</key>
 			<string>BrcmFirmwareStore</string>
+			<key>EmbeddedFirmware</key>
+			<true/>
 			<key>IOMatchCategory</key>
 			<string>BrcmFirmwareStore</string>
 			<key>IOProviderClass</key>

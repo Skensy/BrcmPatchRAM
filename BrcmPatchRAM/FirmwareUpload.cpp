@@ -93,10 +93,14 @@ struct InterruptRead {
         pending = true;
         IOReturn result = pipe.read(buffer, 0, 0, buffer->getLength(), &completion);
         if (result == kIOUSBPipeStalled) {
-            pipe.clearStall();
-#ifndef TARGET_CATALINA
-            result = pipe.read(buffer, 0, 0, buffer->getLength(), &completion);
-#endif
+            result = pipe.clearStall();
+            if (result == kIOReturnSuccess) {
+                clock_get_uptime(&now);
+                if (now >= deadline)
+                    result = kIOReturnTimeout;
+                else
+                    result = pipe.read(buffer, 0, 0, buffer->getLength(), &completion);
+            }
         }
         if (result != kIOReturnSuccess) {
             pending = false;
@@ -273,8 +277,12 @@ IOReturn BrcmPatchRAM::hciParseResponse(void* response, UInt16 length)
             break;
 
         case HCI_EVENT_HARDWARE_ERROR:
-            DebugLog("[%04x:%04x]: Hardware error\n", mVendorId, mProductId);
-            break;
+            mDeviceState = kUpdateAborted;
+            if (header->length < 1)
+                return kIOReturnBadArgument;
+            AlwaysLog("[%04x:%04x]: HCI hardware error 0x%02x.\n", mVendorId, mProductId,
+                      static_cast<const UInt8*>(response)[sizeof(*header)]);
+            return kIOReturnError;
 
         case HCI_EVENT_MODE_CHANGE:
             DebugLog("[%04x:%04x]: Mode change event.\n", mVendorId, mProductId);
