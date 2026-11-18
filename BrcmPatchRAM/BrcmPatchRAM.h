@@ -131,22 +131,10 @@ private:
     IOReturn onTimerEvent(void);
 
     static void uploadFirmwareThread(void* arg, wait_result_t wait);
-    thread_t mWorker = 0;
-
-    IOInterruptEventSource* mWorkSource = NULL;
-    IOLock* mWorkLock = NULL;
     static IOLock* mLoadFirmwareLock;
     friend kern_return_t BrcmPatchRAM_Start(kmod_info_t*, void*);
     friend kern_return_t BrcmPatchRAM_Stop(kmod_info_t*, void*);
 
-    enum WorkPending
-    {
-        kWorkLoadFirmware = 0x01,
-        kWorkFinished = 0x02,
-    };
-    unsigned mWorkPending = 0;
-    void scheduleWork(unsigned newWork);
-    void processWorkQueue(IOInterruptEventSource*, int);
 #endif // #ifndef NON_RESIDENT
 
 #ifndef TARGET_CATALINA

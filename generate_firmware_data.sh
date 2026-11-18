@@ -24,7 +24,7 @@ if [[ -e $cksum ]]; then
 fi
 
 cksum_new=`md5 -q $cksum_temp`
-if [[ $cksum_new == $cksum_old ]]; then
+if [[ -s "$out" && $cksum_new == $cksum_old ]]; then
     echo "Firmwares unchanged, no need to update GeneratedFirmwares.cpp"
     exit 0
 fi

@@ -67,6 +67,8 @@ def parse_inf(inf_path)
       device = nil
     end
   
+    device = nil if line.start_with?('[')
+
     # Determine the firmware filename for each device
     if line =~ /^\[(RAMUSB[0-9A-F_]{4,})\.CopyList\]/
       # Example matches:
@@ -100,6 +102,32 @@ def parse_inf(inf_path)
   return devices
 end
 
+# Accept the Intel HEX record types and payload sizes understood by BrcmFirmwareStore.
+def valid_firmware?(data)
+  has_payload = false
+  eof = false
+  return false unless data.start_with?(':')
+  data.split(/[ \t\r\n]+/).each do |record|
+    return false if eof || !/\A:(?:[0-9a-fA-F]{2}){5,260}\z/.match(record)
+    bytes = [record[1..-1]].pack('H*').bytes
+    size, high, low, type = bytes
+    return false unless bytes.length == size + 5 && (bytes.inject(:+) & 0xff).zero?
+    case type
+    when 0
+      return false if size > 251
+      has_payload ||= size > 0
+    when 1
+      return false unless size.zero? && high.zero? && low.zero?
+      eof = true
+    when 2, 4
+      return false unless size == 2 && high.zero? && low.zero?
+    else
+      return false
+    end
+  end
+  eof && has_payload
+end
+
 def create_firmwares(devices, input_path, output_path)
   # Create output folder
   FileUtils::makedirs output_path
@@ -120,7 +148,8 @@ def create_firmwares(devices, input_path, output_path)
   
     if device  
       output_file = "#{File.basename(firmware, File.extname(firmware))}_v#{device.firmwareVersion}.zhx"
-      data_to_compress = File.read(firmware)
+      data_to_compress = File.binread(firmware)
+      abort "Invalid Intel HEX firmware: #{basename}" unless valid_firmware?(data_to_compress)
       data_compressed = Zlib::Deflate.deflate(data_to_compress, Zlib::BEST_COMPRESSION)
     
       puts "Compressed firmware #{output_file} (#{data_to_compress.size} --> #{data_compressed.size})"
@@ -283,7 +312,9 @@ output = File.expand_path(ARGV.shift)
 # Parse Windows INF file into device objects
 devices = parse_inf(File.join(input, "bcbtums.inf"))
 
-mapped = devices.map(&:firmware).compact.map(&:downcase).uniq
+unmapped = devices.reject(&:firmware)
+abort "Missing firmware mapping for #{unmapped.map(&:deviceKey).join(', ')}" unless unmapped.empty?
+mapped = devices.map(&:firmware).map(&:downcase).uniq
 abort "No firmware mappings found in bcbtums.inf" if mapped.empty?
 available = Dir.glob(File.join(input, "*.hex")).map { |path| File.basename(path).downcase }
 missing = mapped - available

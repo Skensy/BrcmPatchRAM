@@ -87,7 +87,7 @@ OSString* BrcmPatchRAM::brcmIOClass = NULL;
 OSString* BrcmPatchRAM::brcmProviderClass = NULL;
 
 #ifndef NON_RESIDENT
-IOLock* BrcmPatchRAM::mLoadFirmwareLock = IOLockAlloc();
+IOLock* BrcmPatchRAM::mLoadFirmwareLock = NULL;
 #endif
 
 extern "C"
@@ -199,10 +199,6 @@ IOService* BrcmPatchRAM::probe(IOService *provider, SInt32 *probeScore)
     clock_get_uptime(&start_time);
 
 #ifndef NON_RESIDENT
-    mWorkLock = IOLockAlloc();
-    if (!mWorkLock)
-        return NULL;
-
     // Note: mLoadFirmwareLock is static (global), not instance data...
     if (!mLoadFirmwareLock)
         return NULL;
@@ -300,25 +296,14 @@ bool BrcmPatchRAM::start(IOService *provider)
     if (!super::start(provider))
         return false;
 
-   // add interrupt source for delayed actions...
     IOWorkLoop* workLoop = getWorkLoop();
     if (!workLoop)
         return false;
-    mWorkSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventAction, this, &BrcmPatchRAM::processWorkQueue));
-    if (!mWorkSource)
-        return false;
-    workLoop->addEventSource(mWorkSource);
-    mWorkPending = 0;
 
     // add timer for firmware load in the case no re-probe after wake
     mTimer = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &BrcmPatchRAM::onTimerEvent));
     if (!mTimer)
-    {
-        workLoop->removeEventSource(mWorkSource);
-        mWorkSource->release();
-        mWorkSource = NULL;
         return false;
-    }
     workLoop->addEventSource(mTimer);
 
     // register for power state notifications
@@ -362,46 +347,18 @@ void BrcmPatchRAM::stop(IOService* provider)
 
     mStopping = true;
 
-    // allow firmware load already started to finish
-    IOLockLock(mLoadFirmwareLock);
-
-    OSSafeReleaseNULL(mFirmwareStore);
-
-    IOWorkLoop* workLoop = getWorkLoop();
-    if (workLoop)
-    {
-        if (mTimer)
-        {
-            mTimer->cancelTimeout();
-            workLoop->removeEventSource(mTimer);
-            mTimer->release();
-            mTimer = NULL;
-        }
-        if (mWorkSource)
-        {
-            workLoop->removeEventSource(mWorkSource);
-            mWorkSource->release();
-            mWorkSource = NULL;
-            mWorkPending = 0;
-        }
-    }
-
     PMstop();
-
-
-#ifndef NON_RESIDENT
-    if (mWorkLock)
-    {
-        IOLockFree(mWorkLock);
-        mWorkLock = NULL;
+    if (mTimer) {
+        mTimer->cancelTimeout();
+        getWorkLoop()->removeEventSource(mTimer);
+        OSSafeReleaseNULL(mTimer);
     }
 
-    IOLockUnlock(mLoadFirmwareLock);
-#endif // #ifndef NON_RESIDENT
-
+    // A queued worker rechecks the device under this lock before using it.
+    IOLockLock(mLoadFirmwareLock);
+    OSSafeReleaseNULL(mFirmwareStore);
     mDevice.setDevice(NULL);
-
-    mStopping = false;
+    IOLockUnlock(mLoadFirmwareLock);
 
     super::stop(provider);
 }
@@ -413,84 +370,41 @@ IOReturn BrcmPatchRAM::onTimerEvent()
     if (!mDevice.getProperty(kFirmwareLoaded))
     {
         AlwaysLog("BLURP!! no firmware loaded and timer expiried (no re-probe)\n");
-        scheduleWork(kWorkLoadFirmware);
+        thread_t worker;
+        retain();
+        if (kernel_thread_start(&BrcmPatchRAM::uploadFirmwareThread, this, &worker) == KERN_SUCCESS)
+            thread_deallocate(worker);
+        else {
+            AlwaysLog("Error creating firmware uploader thread.\n");
+            release();
+        }
     }
 
     return kIOReturnSuccess;
 }
 
-void BrcmPatchRAM::scheduleWork(unsigned int newWork)
-{
-    IOLockLock(mWorkLock);
-    mWorkPending |= newWork;
-    mWorkSource->interruptOccurred(0, 0, 0);
-    IOLockUnlock(mWorkLock);
-}
-
-void BrcmPatchRAM::processWorkQueue(IOInterruptEventSource*, int)
-{
-    IOLockLock(mWorkLock);
-
-    // start firmware loading process in a non-workloop thread
-    if (mWorkPending & kWorkLoadFirmware)
-    {
-        DebugLog("_workPending kWorkLoadFirmware\n");
-        mWorkPending &= ~kWorkLoadFirmware;
-        retain();
-        kern_return_t result = kernel_thread_start(&BrcmPatchRAM::uploadFirmwareThread, this, &mWorker);
-        if (KERN_SUCCESS == result)
-            DebugLog("Success creating firmware uploader thread\n");
-        else
-        {
-            AlwaysLog("ERROR creating firmware uploader thread.\n");
-            release();
-        }
-    }
-
-    // firmware loading thread is finished
-    if (mWorkPending & kWorkFinished)
-    {
-        DebugLog("_workPending kWorkFinished\n");
-        mWorkPending &= ~kWorkFinished;
-        thread_deallocate(mWorker);
-        mWorker = 0;
-        release();  // matching retain when thread created successfully
-    }
-
-    IOLockUnlock(mWorkLock);
-}
-
 void BrcmPatchRAM::uploadFirmwareThread(void *arg, wait_result_t wait)
 {
-    DebugLog("sendFirmwareThread enter\n");
-
-    // don't start firmware load when lock is held (instance is shutting down)
-    if (IOLockTryLock(mLoadFirmwareLock))
-    {
-        BrcmPatchRAM* me = static_cast<BrcmPatchRAM*>(arg);
+    auto me = static_cast<BrcmPatchRAM*>(arg);
+    IOLockLock(mLoadFirmwareLock);
+    if (me->mDevice.getValidatedDevice() && !me->mDevice.getProperty(kFirmwareLoaded)) {
         me->uploadFirmware();
-#ifndef TARGET_ELCAPITAN
         me->publishPersonality();
-#endif
-        me->scheduleWork(kWorkFinished);
-        IOLockUnlock(mLoadFirmwareLock);
     }
-
-    DebugLog("sendFirmwareThread termination\n");
+    IOLockUnlock(mLoadFirmwareLock);
+    me->release();
     thread_terminate(current_thread());
-    DebugLog("!!! sendFirmwareThread post-terminate !!! should not be here\n");
 }
 
 #endif // #ifndef NON_RESIDENT
 
 void BrcmPatchRAM::uploadFirmware()
 {
-    // signal to timer that firmware already loaded
-    mDevice.setProperty(kFirmwareLoaded, true);
-
-    // don't bother with devices that have no firmware
-    if (!getProperty(kFirmwareKey))
+    if (!getProperty(kFirmwareKey)) {
+        mDevice.setProperty(kFirmwareLoaded, true);
         return;
+    }
+    mDevice.removeProperty(kFirmwareLoaded);
 
     if (!mDevice.open(this))
     {
@@ -514,12 +428,13 @@ void BrcmPatchRAM::uploadFirmware()
             if (mInterruptPipe.getValidatedPipe() && mBulkPipe.getValidatedPipe())
             {
                 DebugLog("got pipes\n");
-                if (performUpgrade())
+                if (performUpgrade()) {
+                    mDevice.setProperty(kFirmwareLoaded, true);
                     if (mDeviceState == kUpdateComplete)
                         AlwaysLog("[%04x:%04x]: Firmware upgrade completed successfully.\n", mVendorId, mProductId);
                     else
                         AlwaysLog("[%04x:%04x]: Firmware upgrade not needed.\n", mVendorId, mProductId);
-                else
+                } else
                     AlwaysLog("[%04x:%04x]: Firmware upgrade failed.\n", mVendorId, mProductId);
             }
             mInterface.close(this);

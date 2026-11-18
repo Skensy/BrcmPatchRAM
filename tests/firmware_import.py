@@ -41,6 +41,20 @@ with tempfile.TemporaryDirectory() as temp:
             assert parsed["IOKitPersonalities"]["0a5c_6417"]["FirmwareKey"] == KEY
 
     before = snapshot(repo)
+    original_hex = (source / name).read_bytes()
+    for bad in (b"", b":00000001FF", b":0100000001FE", b":0100000001FF\n:00000001FF",
+                b":0200000001FE\n:00000001FF", original_hex + b":00000001FF"):
+        (source / name).write_bytes(bad)
+        assert subprocess.run(command).returncode != 0
+        assert snapshot(repo) == before
+    (source / name).write_bytes(original_hex)
+    incomplete = inf.copy()
+    incomplete.insert(2, inf[1].replace("6417", "6418"))
+    (source / "bcbtums.inf").write_text("\n".join(incomplete))
+    assert subprocess.run(command).returncode != 0
+    assert snapshot(repo) == before
+    (source / "bcbtums.inf").write_text("\n".join(inf))
+
     # Simulate interruption after the firmware directory and one plist were replaced.
     pending = repo / ".firmware-update-pending"
     (pending / "old/BrcmPatchRAM").mkdir(parents=True)
@@ -54,3 +68,11 @@ with tempfile.TemporaryDirectory() as temp:
     (source / "bcbtums.inf").write_text("[DestinationDirs]\n")
     assert subprocess.run(command).returncode != 0
     assert snapshot(repo) == before
+
+    generator = ROOT / "generate_firmware_data.sh"
+    subprocess.run([generator], cwd=repo, check=True)
+    generated = repo / "GeneratedFirmwares.cpp"
+    expected = generated.read_bytes()
+    generated.unlink()
+    subprocess.run([generator], cwd=repo, check=True)
+    assert generated.read_bytes() == expected
