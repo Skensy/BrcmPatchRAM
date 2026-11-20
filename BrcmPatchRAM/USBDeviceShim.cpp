@@ -67,7 +67,13 @@ void USBDeviceShim::removeProperty(const char* name)
 
 IOReturn USBDeviceShim::getStringDescriptor(UInt8 index, char *buf, int maxLen, UInt16 lang)
 {
-    return m_pDevice->GetStringDescriptor(index, buf, maxLen, lang);
+    if (!buf || maxLen <= 0)
+        return kIOReturnBadArgument;
+    IOReturn result = m_pDevice->GetStringDescriptor(index, buf, maxLen, lang);
+    if (result != kIOReturnSuccess)
+        buf[0] = 0;
+    buf[maxLen - 1] = 0;
+    return result;
 }
 
 UInt16 USBDeviceShim::getDeviceRelease()
@@ -75,7 +81,7 @@ UInt16 USBDeviceShim::getDeviceRelease()
     return m_pDevice->GetDeviceRelease();
 }
 
-IOReturn USBDeviceShim::getDeviceStatus(IOService* forClient, USBStatus *status)
+IOReturn USBDeviceShim::getDeviceStatus(IOService*, USBStatus *status)
 {
     return m_pDevice->GetDeviceStatus(status);
 }
@@ -95,7 +101,7 @@ const USBCONFIGURATIONDESCRIPTOR* USBDeviceShim::getFullConfigurationDescriptor(
     return m_pDevice->GetFullConfigurationDescriptor(configIndex);
 }
 
-IOReturn USBDeviceShim::getConfiguration(IOService* forClient, UInt8 *configNumber)
+IOReturn USBDeviceShim::getConfiguration(IOService*, UInt8 *configNumber)
 {
     return m_pDevice->GetConfiguration(configNumber);
 }

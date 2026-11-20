@@ -45,6 +45,7 @@ class USBDeviceShim
 private:
 #if defined(TARGET_ELCAPITAN) || defined(TARGET_CATALINA)
     IOUSBHostDevice* m_pDevice;  // 10.11+
+    StandardUSB::DeviceDescriptor mDescriptor {};
 #else
     IOUSBDevice* m_pDevice;
 #endif

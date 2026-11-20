@@ -1459,7 +1459,7 @@
 			<key>IOProbeScore</key>
 			<integer>3000</integer>
 			<key>IOProviderClass</key>
-			<string>IOUSBHostDevice</string>
+			<string>IOUSBDevice</string>
 			<key>idProduct</key>
 			<integer>1000</integer>
 			<key>idVendor</key>
@@ -1474,7 +1474,7 @@
 			<key>IOProbeScore</key>
 			<integer>3000</integer>
 			<key>IOProviderClass</key>
-			<string>IOUSBHostDevice</string>
+			<string>IOUSBDevice</string>
 			<key>idProduct</key>
 			<integer>1001</integer>
 			<key>idVendor</key>

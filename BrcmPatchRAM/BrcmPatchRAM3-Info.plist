@@ -2099,17 +2099,6 @@
 			<key>idVendor</key>
 			<integer>16700</integer>
 		</dict>
-		<key>BrcmPatchRAMResidency</key>
-		<dict>
-			<key>CFBundleIdentifier</key>
-			<string>as.acidanthera.$(PRODUCT_NAME:rfc1034identifier)</string>
-			<key>IOClass</key>
-			<string>BrcmPatchRAMResidency</string>
-			<key>IOMatchCategory</key>
-			<string>BrcmPatchRAMResidency</string>
-			<key>IOProviderClass</key>
-			<string>disabled_IOResources</string>
-		</dict>
 	</dict>
 	<key>OSBundleLibraries</key>
 	<dict>

@@ -53,14 +53,16 @@ struct BrcmPatchRAM {
     Pipe mBulkPipe, mInterruptPipe;
     int refs = 1, upgrades = 0, published = 0, mDeviceState = kUpdateComplete;
     static const int mLoadFirmwareLock = 0;
-    bool key = true, upgradeOK = true;
+    unsigned generation = 1;
+    unsigned powerGeneration() const { return generation; }
+    bool key = true, upgradeOK = true, sleepDuringUpload = false;
     void retain() { ++refs; }
     void release() { assert(refs == 2); --refs; }
     bool getProperty(int) { return key; }
     void printDeviceInfo() {}
     bool setConfiguration(int) { return true; }
     bool findInterface(Interface*) { return true; }
-    bool performUpgrade() { ++upgrades; return upgradeOK; }
+    bool performUpgrade() { ++upgrades; if (sleepDuringUpload) ++generation; return upgradeOK; }
     void publishPersonality() { ++published; }
     IOReturn onTimerEvent();
     static void uploadFirmwareThread(void*, int);
@@ -69,11 +71,12 @@ struct BrcmPatchRAM {
 // DRIVER METHODS
 
 int main() {
-    for (int scenario = 0; scenario < 6; ++scenario) {
+    for (int scenario = 0; scenario < 8; ++scenario) {
         BrcmPatchRAM driver;
         driver.key = scenario != 0;
         driver.mDevice.opens = scenario != 1;
         driver.upgradeOK = scenario != 2;
+        driver.sleepDuringUpload = scenario == 7;
         failStart = scenario == 4;
         queued = nullptr;
         driver.onTimerEvent();
@@ -81,12 +84,13 @@ int main() {
         if (!failStart) {
             assert(queued && driver.refs == 2);
             driver.mDevice.present = scenario != 5; // stop completed before dispatch
+            if (scenario == 6) ++driver.generation; // sleep before dispatch
             queued(target, 0);
         }
         assert(driver.refs == 1);
         assert(driver.mDevice.loaded == (scenario == 0 || scenario == 3));
-        assert(driver.upgrades == (scenario == 2 || scenario == 3));
-        if (scenario == 5) assert(!driver.published);
+        assert(driver.upgrades == (scenario == 2 || scenario == 3 || scenario == 7));
+        assert(driver.published == (scenario == 0 || scenario == 3));
     }
     BrcmPatchRAM driver;
     driver.mDevice.loaded = true;

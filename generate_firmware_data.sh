@@ -1,58 +1,44 @@
 #!/bin/bash
+set -eu
 
-out="GeneratedFirmwares.cpp"
-cksum="GeneratedFirmwaresMD5.txt"
-cksum_temp="/tmp/$(uuidgen)_GeneratedFirmwareMD5.txt"
-
-firmwaredir=./firmwares
-firmwares=$firmwaredir/*.zhx
-
-if [[ "$1" == "clean" ]]; then
-    if [ -e $out ]; then rm $out; fi
-    if [ -e $cksum ]; then rm $cksum; fi
+out=GeneratedFirmwares.cpp
+manifest=GeneratedFirmwaresMD5.txt
+if [[ ${1:-} == clean ]]; then
+    rm -f "$out" "$manifest"
     exit 0
 fi
 
-if [ -e $cksum_temp ]; then rm $cksum_temp; fi
-for firmware in $firmwares; do
-    echo "`basename $firmware` `md5 -q $firmware`" >>$cksum_temp
+# Rename complete files on the same filesystem. A failed xxd must fail Prebuild.
+stage=$(mktemp -d ./.firmware-build.XXXXXX)
+trap 'rm -rf "$stage"' EXIT
+firmwares=(./firmwares/*.zhx)
+for firmware in "${firmwares[@]}"; do
+    hash=$(md5 -q "$firmware")
+    printf '%s %s\n' "${firmware##*/}" "$hash" >> "$stage/$manifest"
 done
-
-cksum_old="unknown"
-if [[ -e $cksum ]]; then
-    cksum_old=`md5 -q $cksum`
-fi
-
-cksum_new=`md5 -q $cksum_temp`
-if [[ -s "$out" && $cksum_new == $cksum_old ]]; then
-    echo "Firmwares unchanged, no need to update GeneratedFirmwares.cpp"
+digest=$(md5 -q "$stage/$manifest")
+header="// GeneratedFirmwares.cpp ($digest)"
+if [[ -s "$out" && -f "$manifest" ]] && IFS= read -r previous < "$out" &&
+    [[ "$previous" == "$header" ]] && cmp -s "$manifest" "$stage/$manifest"; then
     exit 0
 fi
 
-echo "// GeneratedFirmwares.cpp">$out
-echo "//">>$out
-echo "// generated from generate_firmware_data.sh">>$out
-echo "//">>$out
-
-for firmware in $firmwares; do
-    fname=`basename $firmware`
-    cname=${fname//./_}
-
-    echo "static const unsigned char $cname[] = ">>$out
-    echo "{">>$out
-    xxd -i <$firmware >>$out
-    echo "};">>$out
-    echo "">>$out
-done
-
-echo "static const FirmwareEntry firmwares[] = ">>$out
-echo "{">>$out
-for firmware in $firmwares; do
-    fname=`basename $firmware`
-    cname=${fname//./_}
-    echo "    { \"${fname}\", ${cname}, sizeof(${cname}), },">>$out
-done
-echo "    { NULL, NULL, 0, },">>$out
-echo "};">>$out
-
-cp $cksum_temp $cksum
+{
+    echo "$header"
+    for firmware in "${firmwares[@]}"; do
+        name=${firmware##*/}
+        echo "static const unsigned char ${name//./_}[] = {"
+        xxd -i < "$firmware"
+        echo "};"
+    done
+    echo "static const FirmwareEntry firmwares[] = {"
+    for firmware in "${firmwares[@]}"; do
+        name=${firmware##*/}
+        symbol=${name//./_}
+        printf '    { "%s", %s, sizeof(%s) },\n' "$name" "$symbol" "$symbol"
+    done
+    echo "    { NULL, NULL, 0 }"
+    echo "};"
+} > "$stage/$out"
+mv -f "$stage/$out" "$out"
+mv -f "$stage/$manifest" "$manifest"

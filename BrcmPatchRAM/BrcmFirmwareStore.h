@@ -55,7 +55,8 @@ private:
 
 public:
     bool start(IOService *provider) override;
-    void stop(IOService *provider) override;
+    bool init(OSDictionary* properties) override;
+    void free() override;
 
     virtual OSArray* getFirmware(UInt16 vendorId, UInt16 productId, OSString* firmwareIdentifier);
 };

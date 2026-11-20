@@ -189,24 +189,24 @@ static mach_vm_address_t orig_cs_validate {};
 
 #pragma mark - Kernel patching code
 
-static inline void searchAndPatch(const void *haystack, size_t haystackSize, const char *path, const void *needle, size_t findSize, const void *patch, size_t replaceSize) {
+static inline void searchAndPatch(const void *haystack, size_t haystackSize, const char *path __unused, const void *needle, size_t findSize, const void *patch, size_t replaceSize) {
     if (KernelPatcher::findAndReplace(const_cast<void *>(haystack), haystackSize, needle, findSize, patch, replaceSize))
         DBGLOG(MODULE_SHORT, "found string to patch at %s!", path);
 }
 
 template <size_t findSize, size_t replaceSize, typename T>
-static inline void searchAndPatch(const void *haystack, size_t haystackSize, const char *path, const T (&needle)[findSize], const T (&patch)[replaceSize]) {
+static inline void searchAndPatch(const void *haystack, size_t haystackSize, const char *path __unused, const T (&needle)[findSize], const T (&patch)[replaceSize]) {
     searchAndPatch(haystack, haystackSize, path, needle, findSize * sizeof(T), patch, replaceSize * sizeof(T));
 }
 
-static inline void searchAndPatchWithMask(const void *haystack, size_t haystackSize, const char *path, const void *needle, size_t findSize, const void *findMask, size_t findMaskSize, const void *patch, size_t replaceSize, const void *patchMask, size_t replaceMaskSize) {
+static inline void searchAndPatchWithMask(const void *haystack, size_t haystackSize, const char *path __unused, const void *needle, size_t findSize, const void *findMask, size_t findMaskSize, const void *patch, size_t replaceSize, const void *patchMask, size_t replaceMaskSize) {
     if (KernelPatcher::findAndReplaceWithMask(const_cast<void *>(haystack), haystackSize, needle, findSize, findMask, findMaskSize, patch, replaceSize, patchMask, replaceMaskSize))
         DBGLOG(MODULE_SHORT, "found string to patch at %s!", path);
 }
 
 template <size_t findSize, size_t findMaskSize, size_t replaceSize, size_t replaceMaskSize, typename T>
-static inline void searchAndPatchWithMask(const void *haystack, size_t haystackSize, const char *path, const T (&needle)[findSize], const T (&findMask)[findMaskSize], const T (&patch)[replaceSize], const T (&patchMask)[replaceMaskSize]) {
-    searchAndPatchWithMask(haystack, haystackSize, path, needle, findSize * sizeof(T), findMask, findMaskSize * sizeof(T), patch, replaceSize * sizeof(T), patchMask, replaceSize * sizeof(T));
+static inline void searchAndPatchWithMask(const void *haystack, size_t haystackSize, const char *path __unused, const T (&needle)[findSize], const T (&findMask)[findMaskSize], const T (&patch)[replaceSize], const T (&patchMask)[replaceMaskSize]) {
+    searchAndPatchWithMask(haystack, haystackSize, path, needle, findSize * sizeof(T), findMask, findMaskSize * sizeof(T), patch, replaceSize * sizeof(T), patchMask, replaceMaskSize * sizeof(T));
 }
 
 
@@ -248,13 +248,13 @@ static void pluginStart() {
     // There is no point in routing cs_validate_range, because this kext should only be running on Monterey+
     if (getKernelVersion() < KernelVersion::Monterey)
         return;
-    lilu.onPatcherLoadForce([](void *user, KernelPatcher &patcher) {
+    lilu.onPatcherLoadForce([](void *, KernelPatcher &patcher) {
+        auto &boardId = BaseDeviceInfo::get().boardIdentifier;
+        auto boardIdSize = strnlen(boardId, sizeof(boardId)) + 1;
+        shouldPatchBoardId = boardIdSize == kBoardIdSize || boardIdSize == kBoardIdSizeLegacy;
         if (getKernelVersion() >= KernelVersion::Sonoma) {
-            shouldPatchBoardId = checkKernelArgument("-btlfxboardid");
+            shouldPatchBoardId = shouldPatchBoardId && checkKernelArgument("-btlfxboardid");
         } else {
-            auto boardId = BaseDeviceInfo::get().boardIdentifier;
-            auto boardIdSize = strlen(boardId) + 1;
-            shouldPatchBoardId = boardIdSize == kBoardIdSize || boardIdSize == kBoardIdSizeLegacy;
             if (shouldPatchBoardId)
                 for (size_t i = 0; i < arrsize(boardIdsWithUSBBluetooth); i++)
                     if (strcmp(boardIdsWithUSBBluetooth[i], boardId) == 0) {

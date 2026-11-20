@@ -39,38 +39,28 @@ extern "C"
     static void* z_alloc(void*, u_int items, u_int size);
     static void z_free(void*, void *ptr);
     
-    typedef struct z_mem
+    struct alignas(16) AllocationHeader {
+        size_t size;
+    };
+
+    void* z_alloc(void*, u_int count, u_int size)
     {
-        UInt32 alloc_size;
-        UInt8 data[0];
-    } z_mem;
-    
-    /*
-     * Space allocation and freeing routines for use by zlib routines.
-     */
-    void* z_alloc(void* notused __unused, u_int num_items, u_int size)
-    {
-        void* result = NULL;
-        z_mem* zmem = NULL;
-        UInt32 total = num_items * size;
-        UInt32 allocSize =  total + sizeof(zmem);
-        
-        zmem = (z_mem*)IOMalloc(allocSize);
-        
-        if (zmem)
-        {
-            zmem->alloc_size = allocSize;
-            result = (void*)&(zmem->data);
-        }
-        
-        return result;
+        if (!size || count > (SIZE_MAX - sizeof(AllocationHeader)) / size)
+            return nullptr;
+        size_t bytes = sizeof(AllocationHeader) + static_cast<size_t>(count) * size;
+        auto header = static_cast<AllocationHeader*>(IOMalloc(bytes));
+        if (!header)
+            return nullptr;
+        header->size = bytes;
+        return header + 1;
     }
-    
-    void z_free(void* notused __unused, void* ptr)
+
+    void z_free(void*, void* ptr)
     {
-        UInt32* skipper = (UInt32 *)ptr - 1;
-        z_mem* zmem = (z_mem*)skipper;
-        IOFree((void*)zmem, zmem->alloc_size);
+        if (ptr) {
+            auto header = static_cast<AllocationHeader*>(ptr) - 1;
+            IOFree(header, header->size);
+        }
     }
 };
 
@@ -79,63 +69,48 @@ extern "C"
  */
 OSData* BrcmFirmwareStore::decompressFirmware(OSData* firmware)
 {
-    z_stream zstream;
-    int zlib_result;
-    unsigned int bufferSize = 0;
-    void* buffer = NULL;
-    OSData* result = NULL;
-    
-    // Verify if the data is compressed
-    if (firmware->getLength() < 2)
-        return NULL;
-
-    UInt16* magic = (UInt16*)firmware->getBytesNoCopy();
-    
-    if (*magic != 0x0178     // Zlib no compression
-        && *magic != 0x9c78  // Zlib default compression
-        && *magic != 0xda78) // Zlib maximum compression
-    {
-        // Return the data as-is
+    const auto bytes = static_cast<const UInt8*>(firmware->getBytesNoCopy());
+    const unsigned length = firmware->getLength();
+    if (!bytes || length < 2)
+        return nullptr;
+    if (bytes[0] == ':') {
         firmware->retain();
         return firmware;
     }
-    
-    if (firmware->getLength() > UINT32_MAX / 4)
-        return NULL;
-    bufferSize = firmware->getLength() * 4;
-    
-    buffer = IOMalloc(bufferSize);
-    if (!buffer)
-        return NULL;
-    
-    bzero(&zstream, sizeof(zstream));
-    
-    zstream.next_in   = (unsigned char*)firmware->getBytesNoCopy();
-    zstream.avail_in  = firmware->getLength();
-    
-    zstream.next_out  = (unsigned char*)buffer;
-    zstream.avail_out = bufferSize;
-    
-    zstream.zalloc    = z_alloc;
-    zstream.zfree     = z_free;
-    
-    zlib_result = inflateInit(&zstream);
-    
-    if (zlib_result != Z_OK)
-    {
-        IOFree(buffer, bufferSize);
-        return NULL;
+
+    // Preserve the old accepted output range, allow compact images up to 1 MiB.
+    const unsigned previousLimit = length <= UINT32_MAX / 4 ? length * 4 : 0;
+    const unsigned limit = previousLimit > 1024 * 1024 ? previousLimit : 1024 * 1024;
+    z_stream stream {};
+    stream.zalloc = z_alloc;
+    stream.zfree = z_free;
+    stream.next_in = const_cast<UInt8*>(bytes);
+    stream.avail_in = length;
+    if (inflateInit(&stream) != Z_OK)
+        return nullptr;
+
+    constexpr unsigned chunkSize = 8192;
+    auto chunk = static_cast<UInt8*>(IOMalloc(chunkSize));
+    auto result = chunk ? OSData::withCapacity(chunkSize) : nullptr;
+    int status = Z_OK;
+    while (result && status == Z_OK) {
+        stream.next_out = chunk;
+        stream.avail_out = chunkSize;
+        status = inflate(&stream, Z_NO_FLUSH);
+        const unsigned produced = chunkSize - stream.avail_out;
+        if (produced > limit - result->getLength() ||
+            (produced && !result->appendBytes(chunk, produced)))
+            break;
+        if (status == Z_STREAM_END) {
+            inflateEnd(&stream);
+            IOFree(chunk, chunkSize);
+            return result;
+        }
     }
-    
-    zlib_result = inflate(&zstream, Z_FINISH);
-    
-    if (zlib_result == Z_STREAM_END)
-        // Allocate final result
-        result = OSData::withBytes(buffer, (unsigned int)zstream.total_out);
-    
-    inflateEnd(&zstream);
-    IOFree(buffer, bufferSize);
-    
+    OSSafeReleaseNULL(result);
+    if (chunk)
+        IOFree(chunk, chunkSize);
+    inflateEnd(&stream);
     return result;
 }
 
@@ -204,6 +179,7 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
     }
     const UInt8* end = data + firmwareData->getLength();
     UInt32 baseAddress = 0;
+    bool hasPayload = false;
     UInt8 binary[0x110];
     
     if (*data != HEX_LINE_PREFIX)
@@ -217,7 +193,7 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
         bzero(binary, sizeof(binary));
         data++;
         
-        int offset = 0;
+        size_t offset = 0;
         
         // Read all hex characters for this line
         while (data < end && validHexChar(*data))
@@ -230,7 +206,7 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
         
         // Parse line data
         UInt8 length = binary[0];
-        if (offset != HEX_HEADER_SIZE + length + 1)
+        if (offset != size_t(HEX_HEADER_SIZE + length + 1))
             goto exit_error;
         UInt16 addr = binary[1] << 8 | binary[2];
         UInt8 record_type = binary[3];
@@ -255,6 +231,7 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
                 // Reserved 4 bytes for the address
                 if (length > 251)
                     goto exit_error;
+                hasPayload |= length != 0;
                 length += 4;
                 
                 // Allocate instruction (Opcode - 2 bytes, length - 1 byte)
@@ -274,7 +251,9 @@ OSArray* BrcmFirmwareStore::parseFirmware(OSData* firmwareData)
             }
             // End of File
             case REC_TYPE_EOF:
-                if (length || addr)
+                while (data < end && (*data == '\r' || *data == '\n' || *data == ' ' || *data == '\t'))
+                    data++;
+                if (length || addr || !hasPayload || data != end)
                     goto exit_error;
                 return instructions;
             // Extended Segment Address
@@ -320,11 +299,9 @@ exit_error:
 
 OSDefineMetaClassAndStructors(BrcmFirmwareStore, IOService)
 
-bool BrcmFirmwareStore::start(IOService *provider)
+bool BrcmFirmwareStore::init(OSDictionary* properties)
 {
-    DebugLog("Firmware store start\n");
-    
-    if (!super::start(provider))
+    if (!super::init(properties))
         return false;
 
     mFirmwares = OSDictionary::withCapacity(1);
@@ -337,14 +314,21 @@ bool BrcmFirmwareStore::start(IOService *provider)
         return false;
     }
 
+    return true;
+}
+
+bool BrcmFirmwareStore::start(IOService* provider)
+{
+    if (!super::start(provider))
+        return false;
     registerService();
 
     return true;
 }
 
-void BrcmFirmwareStore::stop(IOService *provider)
+void BrcmFirmwareStore::free()
 {
-    DebugLog("Firmware store stop\n");
+    DebugLog("Firmware store free\n");
     
     OSSafeReleaseNULL(mFirmwares);
     
@@ -354,10 +338,10 @@ void BrcmFirmwareStore::stop(IOService *provider)
         mDataLock = NULL;
     }
     
-    super::stop(provider);
+    super::free();
 }
 
-void BrcmFirmwareStore::requestResourceCallback(OSKextRequestTag requestTag, OSReturn result, const void * resourceData, uint32_t resourceDataLength, void* context1)
+void BrcmFirmwareStore::requestResourceCallback(OSKextRequestTag, OSReturn result, const void * resourceData, uint32_t resourceDataLength, void* context1)
 {
     ResourceCallbackContext *context = (ResourceCallbackContext*)context1;
     
@@ -446,7 +430,7 @@ OSData* BrcmFirmwareStore::loadFirmwareFiles(UInt16 vendorId, UInt16 productId, 
     return result;
 }
 
-OSArray* BrcmFirmwareStore::loadFirmware(UInt16 vendorId, UInt16 productId, OSString* firmwareKey)
+OSArray* BrcmFirmwareStore::loadFirmware(UInt16 vendorId __unused, UInt16 productId __unused, OSString* firmwareKey)
 {
 #ifdef FIRMWAREDATA
     char filename[PATH_MAX];
@@ -546,30 +530,28 @@ OSArray* BrcmFirmwareStore::getFirmware(UInt16 vendorId, UInt16 productId, OSStr
         return NULL;
     }
     
+#ifdef FIRMWAREDATA
+    auto cacheKey = firmwareKey;
+#else
+    char cacheKey[PATH_MAX];
+    int keyLength = snprintf(cacheKey, sizeof(cacheKey), "%04x_%04x:%s",
+                             vendorId, productId, firmwareKey->getCStringNoCopy());
+    if (keyLength < 0 || static_cast<size_t>(keyLength) >= sizeof(cacheKey))
+        return nullptr;
+#endif
     IOLockLock(mDataLock);
-    OSArray* instructions = OSDynamicCast(OSArray, mFirmwares->getObject(firmwareKey));
-    
-    // Cached instructions found for firmwareKey?
-    if (!instructions)
-    {
-        // Load instructions for firmwareKey
-        instructions = loadFirmware(vendorId, productId, firmwareKey);
-        
-        // Add instructions to the firmwares cache
-        if (instructions)
-        {
-            bool cached = mFirmwares->setObject(firmwareKey, instructions);
-            instructions->release();
-            if (!cached)
-                instructions = NULL;
-        }
-    }
-    else
-        DebugLog("Retrieved cached firmware for \"%s\".\n", firmwareKey->getCStringNoCopy());
-
+    auto cached = OSDynamicCast(OSArray, mFirmwares->getObject(cacheKey));
     IOLockUnlock(mDataLock);
-    
-    return instructions;
+    if (cached)
+        return cached;
+
+    // Resource delivery sleeps. Other devices can look up cached images meanwhile.
+    auto loaded = loadFirmware(vendorId, productId, firmwareKey);
+    IOLockLock(mDataLock);
+    cached = OSDynamicCast(OSArray, mFirmwares->getObject(cacheKey));
+    if (!cached && loaded && mFirmwares->setObject(cacheKey, loaded))
+        cached = loaded;
+    IOLockUnlock(mDataLock);
+    OSSafeReleaseNULL(loaded);
+    return cached;
 }
-
-

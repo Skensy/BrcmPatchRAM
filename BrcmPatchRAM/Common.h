@@ -20,7 +20,11 @@
 #ifndef BRCMPatchRAM_Common_h
 #define BRCMPatchRAM_Common_h
 
-#ifndef TARGET_ELCAPITAN
+#if defined(TARGET_CATALINA)
+#define BRCMPATCHRAM_NAME "BrcmPatchRAM3"
+#elif defined(FIRMWAREDATA)
+#define BRCMPATCHRAM_NAME "BrcmFirmwareData"
+#elif !defined(TARGET_ELCAPITAN)
 #define BRCMPATCHRAM_NAME "BrcmPatchRAM"
 #else
 #define BRCMPATCHRAM_NAME "BrcmPatchRAM2"

@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		51E2E7F52674FA4F00BBD815 /* plugin_start.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 51E2E7F42674FA4F00BBD815 /* plugin_start.cpp */; };
-		51E67F002673C86300FB6051 /* libkmod.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE8DA13225182BB2008C44E8 /* libkmod.a */; };
 		51E67F062673CA2B00FB6051 /* BlueToolFixup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 51E67F042673CA2B00FB6051 /* BlueToolFixup.cpp */; };
 		841AD87E1BB3C0350082B7B0 /* BrcmFirmwareStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D4049E551A3252B1003A1893 /* BrcmFirmwareStore.cpp */; };
 		841AD8811BB3C0350082B7B0 /* BrcmPatchRAM.h in Headers */ = {isa = PBXBuildFile; fileRef = D4F91B031A2998CE0030D10D /* BrcmPatchRAM.h */; };
@@ -23,11 +22,6 @@
 		842B20C01BB2F0D900D3C468 /* USBDeviceShim.h in Headers */ = {isa = PBXBuildFile; fileRef = D4E0A25B1BA30FD300A5FE05 /* USBDeviceShim.h */; };
 		842B20C11BB2F0D900D3C468 /* hci.h in Headers */ = {isa = PBXBuildFile; fileRef = D45427691A2A045E000B0964 /* hci.h */; };
 		842B20CC1BB2F0F800D3C468 /* BrcmFirmwareStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D4049E551A3252B1003A1893 /* BrcmFirmwareStore.cpp */; };
-		CE8DA13325182BB2008C44E8 /* libkmod.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE8DA13225182BB2008C44E8 /* libkmod.a */; };
-		CE8DA13425182BB6008C44E8 /* libkmod.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE8DA13225182BB2008C44E8 /* libkmod.a */; };
-		CE8DA13525182BB8008C44E8 /* libkmod.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE8DA13225182BB2008C44E8 /* libkmod.a */; };
-		CE8DA13625182BBA008C44E8 /* libkmod.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE8DA13225182BB2008C44E8 /* libkmod.a */; };
-		CE8DA13725182BBD008C44E8 /* libkmod.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE8DA13225182BB2008C44E8 /* libkmod.a */; };
 		CE8DA716235248C300BCE180 /* BrcmPatchRAM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D4F91B051A2998CE0030D10D /* BrcmPatchRAM.cpp */; };
 		7B0200010000000000000001 /* FirmwareUpload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7B0200010000000000000000 /* FirmwareUpload.cpp */; };
 		CE8DA71C235248C300BCE180 /* BrcmPatchRAM.h in Headers */ = {isa = PBXBuildFile; fileRef = D4F91B031A2998CE0030D10D /* BrcmPatchRAM.h */; };
@@ -231,7 +225,6 @@
 		842B20A11BB2EFA200D3C468 /* BrcmFirmwareRepo-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "BrcmFirmwareRepo-Info.plist"; sourceTree = "<group>"; };
 		842B20C91BB2F0D900D3C468 /* BrcmFirmwareRepo.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrcmFirmwareRepo.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		8480E9531BB4312200FF61B0 /* README.md */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
-		CE8DA13225182BB2008C44E8 /* libkmod.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libkmod.a; path = ../Lilu/MacKernelSDK/Library/x86_64/libkmod.a; sourceTree = "<group>"; };
 		CE8DA729235248C300BCE180 /* BrcmPatchRAM.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrcmPatchRAM.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE8DA72B2352496A00BCE180 /* BrcmPatchRAM-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "BrcmPatchRAM-Info.plist"; sourceTree = "<group>"; };
 		CEB6DB5B25BC5DB9009088C3 /* BrcmBluetoothInjector.kext */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.kernel-extension"; path = BrcmBluetoothInjector.kext; sourceTree = "<group>"; };
@@ -264,7 +257,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				51E67F002673C86300FB6051 /* libkmod.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -272,7 +264,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CE8DA13425182BB6008C44E8 /* libkmod.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -280,7 +271,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CE8DA13325182BB2008C44E8 /* libkmod.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -288,7 +278,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CE8DA13725182BBD008C44E8 /* libkmod.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -296,7 +285,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CE8DA13525182BB8008C44E8 /* libkmod.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -304,7 +292,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CE8DA13625182BBA008C44E8 /* libkmod.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -376,7 +363,6 @@
 		CE8DA13125182BB2008C44E8 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				CE8DA13225182BB2008C44E8 /* libkmod.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -855,7 +841,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "rm -rf \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources\"\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources\"\nfor fw in \"${PROJECT_DIR}/firmwares\"/*.zhx; do\n  cp -r \"$fw\" \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources\"\ndone\n";
+			shellScript = "set -e\nrm -rf \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources\"\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources\"\nfor fw in \"${PROJECT_DIR}/firmwares\"/*.zhx; do\n  cp -r \"$fw\" \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources\"\ndone\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1119,7 +1105,8 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.BrcmPatchRAM;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = as.acidanthera.BrcmFirmwareStore;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
@@ -1141,7 +1128,8 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.BrcmPatchRAM;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = as.acidanthera.BrcmFirmwareStore;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
@@ -1163,7 +1151,8 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.BrcmPatchRAM;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = as.acidanthera.BrcmFirmwareStore;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
@@ -1182,7 +1171,8 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.BrcmPatchRAM;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = as.acidanthera.BrcmFirmwareStore;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
@@ -1284,7 +1274,8 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.BrcmPatchRAM;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				MODULE_START = BrcmPatchRAM_Start;
 				MODULE_STOP = BrcmPatchRAM_Stop;
 				PRODUCT_BUNDLE_IDENTIFIER = "as.acidanthera.$(PRODUCT_NAME:rfc1034identifier)";
@@ -1309,7 +1300,8 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.BrcmPatchRAM;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				MODULE_START = BrcmPatchRAM_Start;
 				MODULE_STOP = BrcmPatchRAM_Stop;
 				PRODUCT_BUNDLE_IDENTIFIER = "as.acidanthera.$(PRODUCT_NAME:rfc1034identifier)";
@@ -1335,7 +1327,8 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.BrcmPatchRAM;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				MODULE_START = 0;
 				MODULE_STOP = 0;
 				PRODUCT_BUNDLE_IDENTIFIER = "as.acidanthera.$(PRODUCT_NAME:rfc1034identifier)";
@@ -1360,7 +1353,8 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.BrcmPatchRAM;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				MODULE_START = 0;
 				MODULE_STOP = 0;
 				PRODUCT_BUNDLE_IDENTIFIER = "as.acidanthera.$(PRODUCT_NAME:rfc1034identifier)";
@@ -1472,7 +1466,8 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.BrcmPatchRAM;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				MODULE_START = BrcmPatchRAM_Start;
 				MODULE_STOP = BrcmPatchRAM_Stop;
 				PRODUCT_BUNDLE_IDENTIFIER = "as.acidanthera.$(PRODUCT_NAME:rfc1034identifier)";
@@ -1497,7 +1492,8 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.BrcmPatchRAM;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				MODULE_START = BrcmPatchRAM_Start;
 				MODULE_STOP = BrcmPatchRAM_Stop;
 				PRODUCT_BUNDLE_IDENTIFIER = "as.acidanthera.$(PRODUCT_NAME:rfc1034identifier)";
@@ -1516,7 +1512,8 @@
 				INFOPLIST_FILE = "BrcmNonPatchRAM-Info.plist";
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.injector.BrcmBluetoothInjector;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = "as.acidanthera.injector.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
@@ -1532,7 +1529,8 @@
 				INFOPLIST_FILE = "BrcmNonPatchRAM-Info.plist";
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.injector.BrcmBluetoothInjector;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = "as.acidanthera.injector.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
@@ -1548,7 +1546,8 @@
 				INFOPLIST_FILE = "BrcmNonPatchRAM2-Info.plist";
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.injector.BrcmBluetoothInjector;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = "as.acidanthera.injector.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
@@ -1564,7 +1563,8 @@
 				INFOPLIST_FILE = "BrcmNonPatchRAM2-Info.plist";
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
-				MODULE_NAME = as.acidanthera.injector.BrcmBluetoothInjector;
+				MODULE_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = "as.acidanthera.injector.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;

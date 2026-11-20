@@ -5,15 +5,16 @@ if [ "${TARGET_BUILD_DIR}" = "" ]; then
   exit 1
 fi
 
-cd "${TARGET_BUILD_DIR}"
-
-# clean / build
-if [ "$1" != "analyze" ]; then
-  rm -rf *.zip || exit 1
+if [[ ${1:-} == clean && ! -d "$TARGET_BUILD_DIR" ]]; then
+  exit 0
 fi
-
-if [ "$1" != "" ]; then
-  echo "Got action $1, skipping!"
+cd "$TARGET_BUILD_DIR" || exit 1
+archive="BrcmPatchRAM-${CURRENT_PROJECT_VERSION}-$(echo "$CONFIGURATION" | tr /a-z/ /A-Z/).zip"
+if [[ ${1:-} == clean ]]; then
+  rm -f "$archive"
+  exit $?
+fi
+if [[ -n ${1:-} ]]; then
   exit 0
 fi
 
@@ -29,6 +30,4 @@ for kext in *.kext; do
   dist+=("$kext")
 done
 
-archive="BrcmPatchRAM-${CURRENT_PROJECT_VERSION}-$(echo $CONFIGURATION | tr /a-z/ /A-Z/).zip"
-rm -rf *.zip
 zip -qry -FS "${archive}" "${dist[@]}"

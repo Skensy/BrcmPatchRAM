@@ -193,13 +193,19 @@ IOReturn BrcmPatchRAM::hciParseResponse(void* response, UInt16 length)
         {
             HCI_COMMAND_COMPLETE* event = (HCI_COMMAND_COMPLETE*)response;
 
-            if (header->length < sizeof(*event) - sizeof(*header)) {
+            constexpr size_t commandFields = sizeof(*event) - sizeof(*header) - sizeof(event->status);
+            if (header->length < commandFields) {
                 mDeviceState = kUpdateAborted;
                 return kIOReturnError;
             }
 
-            if (event->opcode != mExpectedOpcode)
+            // Opcode zero advertises command credits and has no return parameters.
+            if (!event->opcode || event->opcode != mExpectedOpcode)
                 break;
+            if (header->length < commandFields + sizeof(event->status)) {
+                mDeviceState = kUpdateAborted;
+                return kIOReturnBadArgument;
+            }
             if (event->status != 0) {
                 AlwaysLog("HCI command 0x%04x failed with status 0x%02x.\n", event->opcode, event->status);
                 mDeviceState = kUpdateAborted;

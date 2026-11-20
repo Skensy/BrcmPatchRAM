@@ -219,7 +219,7 @@ def create_injector(device, for_usbhost, compressed_data, output_path)
   add_key_value(firmware_dict, "IOProbeScore", "integer", "2000")
   add_key_value(firmware_dict, "IOProviderClass", "string", "IOResources")
   
-  injector_path = File.join(output_path, "BrcmFirmwareInjector%s_%04x_%04x.kext/Contents" % [ for_usbhost ? "2" : "", device.vendorId, device.productId, device.version ])
+  injector_path = File.join(output_path, "BrcmFirmwareInjector%s_%04x_%04x.kext/Contents" % [ for_usbhost ? "2" : "", device.vendorId, device.productId ])
   
   FileUtils::makedirs(injector_path)
   
@@ -263,7 +263,7 @@ def create_plist(devices, output_path, version)
     add_key_value(device_xml, "idVendor", "integer", device.vendorId)
   end
 
-  if version >= 2
+  if version == 2
     Element.new("key", fws_xml).text = "BrcmPatchRAMResidency"
     residency_xml = Element.new("dict", fws_xml)
     add_key_value(residency_xml, "CFBundleIdentifier", "string", "as.acidanthera.$(PRODUCT_NAME:rfc1034identifier)")

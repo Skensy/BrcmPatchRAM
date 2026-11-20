@@ -101,8 +101,8 @@ private:
     USBPipeShim mInterruptPipe;
     USBPipeShim mBulkPipe;
     BrcmFirmwareStore* mFirmwareStore = NULL;
-#ifndef NON_RESIDENT
-    bool mStopping = false;
+#if !defined(NON_RESIDENT) && defined(DEBUG)
+    uint64_t wake_time = 0;
 #endif
     bool mSupportsHandshake = false;
 
@@ -118,7 +118,9 @@ private:
     static OSString* brcmBundleIdentifier;
     static OSString* brcmIOClass;
     static OSString* brcmProviderClass;
-    static void initBrcmStrings();
+    static bool initBrcmStrings();
+    friend kern_return_t BrcmPatchRAM_Start(kmod_info_t*, void*);
+    friend kern_return_t BrcmPatchRAM_Stop(kmod_info_t*, void*);
 #endif
     
 #ifdef DEBUG
@@ -126,14 +128,17 @@ private:
 #endif
 
 #ifndef NON_RESIDENT
+    // Odd generations admit wake workers. Only the PM callback changes generation.
+    UInt32 mPowerGeneration = 0;
+    UInt32 powerGeneration() const {
+        return __atomic_load_n(&mPowerGeneration, __ATOMIC_ACQUIRE);
+    }
     UInt32 mBlurpWait = 0;
     IOTimerEventSource* mTimer = NULL;
     IOReturn onTimerEvent(void);
 
     static void uploadFirmwareThread(void* arg, wait_result_t wait);
     static IOLock* mLoadFirmwareLock;
-    friend kern_return_t BrcmPatchRAM_Start(kmod_info_t*, void*);
-    friend kern_return_t BrcmPatchRAM_Stop(kmod_info_t*, void*);
 
 #endif // #ifndef NON_RESIDENT
 
@@ -185,8 +190,8 @@ public:
     
 #ifdef TARGET_CATALINA
     bool init(OSDictionary *properties) override;
-    void free() override;
 #endif
+    void free() override;
 };
 
 #if defined(NON_RESIDENT) && (!defined(TARGET_CATALINA))

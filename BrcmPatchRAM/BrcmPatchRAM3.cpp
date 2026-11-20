@@ -139,9 +139,9 @@ IOService* BrcmPatchRAM::probe(IOService *provider, SInt32 *probeScore)
      */
     *probeScore = 3000;
     
-    // BrcmPatchRAM.kext, if installed on pre 10.11 fails immediately
-    if (version_major < 15) {
-        AlwaysLog("Aborting -- BrcmPatchRAM3.kext should not be installed pre 10.11.  Use BrcmPatchRAM.kext instead.\n");
+    // This driver implements the Catalina and later matching model.
+    if (version_major < 19) {
+        AlwaysLog("Aborting -- BrcmPatchRAM3.kext requires macOS 10.15 or later.\n");
         return NULL;
     }
     
@@ -206,7 +206,7 @@ bool BrcmPatchRAM::start(IOService *provider)
     makeUsable();
     
     mDevice.setDevice(provider);
-    success = uploadFirmware();
+    success = mDevice.getValidatedDevice() && uploadFirmware();
     if (!success) {
         mDevice.setDevice(nullptr);
         PMstop();
@@ -240,7 +240,7 @@ void BrcmPatchRAM::stop(IOService* provider)
  * As we registered for power state notifications we have to supply a
  * handler, even though it's a dummy implementation.
  */
-IOReturn BrcmPatchRAM::setPowerState(unsigned long which, IOService *whom)
+IOReturn BrcmPatchRAM::setPowerState(unsigned long which, IOService*)
 {
     DebugLog("setPowerState: which = 0x%lx\n", which);
     
@@ -356,6 +356,11 @@ bool BrcmPatchRAM::setConfiguration(int configurationIndex)
     }
     
     // Device is already configured
+    if (currentConfiguration && currentConfiguration != configurationDescriptor->bConfigurationValue) {
+        AlwaysLog("Unexpected active USB configuration %u (expected %u).\n",
+                  currentConfiguration, configurationDescriptor->bConfigurationValue);
+        return false;
+    }
     if (currentConfiguration != 0) {
         DebugLog("[%04x:%04x]: Device configuration is already set to configuration index %d.\n",
                  mVendorId, mProductId, configurationIndex);

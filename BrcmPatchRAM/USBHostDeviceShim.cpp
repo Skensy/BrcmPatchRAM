@@ -35,8 +35,15 @@ void USBDeviceShim::setDevice(IOService* provider)
     
     m_pDevice = OSDynamicCast(IOUSBHostDevice, provider);
     
-    if (m_pDevice)
-        m_pDevice->retain();
+    if (m_pDevice) {
+        auto descriptor = m_pDevice->getDeviceDescriptor();
+        if (descriptor) {
+            mDescriptor = *descriptor;
+            m_pDevice->retain();
+        } else {
+            m_pDevice = nullptr;
+        }
+    }
     
     if (prev)
         prev->release();
@@ -44,12 +51,12 @@ void USBDeviceShim::setDevice(IOService* provider)
 
 UInt16 USBDeviceShim::getVendorID()
 {
-    return USBToHost16(m_pDevice->getDeviceDescriptor()->idVendor);
+    return USBToHost16(mDescriptor.idVendor);
 }
 
 UInt16 USBDeviceShim::getProductID()
 {
-    return USBToHost16(m_pDevice->getDeviceDescriptor()->idProduct);
+    return USBToHost16(mDescriptor.idProduct);
 }
 
 OSObject* USBDeviceShim::getProperty(const char* name)
@@ -69,9 +76,11 @@ void USBDeviceShim::removeProperty(const char* name)
 
 IOReturn USBDeviceShim::getStringDescriptor(UInt8 index, char *buf, int maxLen, UInt16 lang)
 {
+    if (!buf || maxLen <= 0)
+        return kIOReturnBadArgument;
     memset(buf, 0, maxLen);
     
-    const StringDescriptor* desc = m_pDevice->getStringDescriptor(index);
+    const StringDescriptor* desc = m_pDevice->getStringDescriptor(index, lang);
     
     if (!desc)
         return kIOReturnBadArgument;
@@ -80,14 +89,13 @@ IOReturn USBDeviceShim::getStringDescriptor(UInt8 index, char *buf, int maxLen, 
         return kIOReturnBadArgument;
     
     size_t utf8len = 0;
-    utf8_encodestr(reinterpret_cast<const u_int16_t*>(desc->bString), desc->bLength - StandardUSB::kDescriptorSize, reinterpret_cast<u_int8_t*>(buf), &utf8len, maxLen, '/', UTF_LITTLE_ENDIAN);
-    
-    return kIOReturnSuccess;
+    int error = utf8_encodestr(reinterpret_cast<const u_int16_t*>(desc->bString), desc->bLength - StandardUSB::kDescriptorSize, reinterpret_cast<u_int8_t*>(buf), &utf8len, maxLen, '/', UTF_LITTLE_ENDIAN);
+    return error ? kIOReturnError : kIOReturnSuccess;
 }
 
 UInt16 USBDeviceShim::getDeviceRelease()
 {
-    return USBToHost16(m_pDevice->getDeviceDescriptor()->bcdDevice);
+    return USBToHost16(mDescriptor.bcdDevice);
 }
 
 IOReturn USBDeviceShim::getDeviceStatus(IOService* forClient, USBStatus *status)
@@ -117,7 +125,7 @@ IOReturn USBDeviceShim::resetDevice()
 
 UInt8 USBDeviceShim::getNumConfigurations()
 {
-    return m_pDevice->getDeviceDescriptor()->bNumConfigurations;
+    return mDescriptor.bNumConfigurations;
 }
 
 const USBCONFIGURATIONDESCRIPTOR* USBDeviceShim::getFullConfigurationDescriptor(UInt8 configIndex)
@@ -136,11 +144,13 @@ IOReturn USBDeviceShim::getConfiguration(IOService* forClient, UInt8 *configNumb
     request.wLength       = sizeof(config);
     uint32_t bytesTransferred = 0;
     IOReturn result = m_pDevice->deviceRequest(forClient, request, &config, bytesTransferred, kUSBHostStandardRequestCompletionTimeout);
+    if (result == kIOReturnSuccess && bytesTransferred != sizeof(config))
+        return kIOReturnUnderrun;
     *configNumber = config;
     return result;
 }
 
-IOReturn USBDeviceShim::setConfiguration(IOService *forClient, UInt8 configValue, bool startInterfaceMatching)
+IOReturn USBDeviceShim::setConfiguration(IOService*, UInt8 configValue, bool startInterfaceMatching)
 {
     return m_pDevice->setConfiguration(configValue, startInterfaceMatching);
 }
@@ -216,17 +226,17 @@ void USBDeviceShim::close(IOService *forClient, IOOptionBits options)
 
 UInt8 USBDeviceShim::getManufacturerStringIndex()
 {
-    return m_pDevice->getDeviceDescriptor()->iManufacturer;
+    return mDescriptor.iManufacturer;
 }
 
 UInt8 USBDeviceShim::getProductStringIndex()
 {
-    return m_pDevice->getDeviceDescriptor()->iProduct;
+    return mDescriptor.iProduct;
 }
 
 UInt8 USBDeviceShim::getSerialNumberStringIndex()
 {
-    return m_pDevice->getDeviceDescriptor()->iSerialNumber;
+    return mDescriptor.iSerialNumber;
 }
 
 USBInterfaceShim::USBInterfaceShim()
@@ -262,22 +272,26 @@ void USBInterfaceShim::close(IOService *forClient, IOOptionBits options)
 #ifdef DEBUG
 UInt8 USBInterfaceShim::getInterfaceNumber()
 {
-    return m_pInterface->getInterfaceDescriptor()->bInterfaceNumber;
+    auto descriptor = m_pInterface->getInterfaceDescriptor();
+    return descriptor ? descriptor->bInterfaceNumber : 0;
 }
 
 UInt8 USBInterfaceShim::getInterfaceClass()
 {
-    return m_pInterface->getInterfaceDescriptor()->bInterfaceClass;
+    auto descriptor = m_pInterface->getInterfaceDescriptor();
+    return descriptor ? descriptor->bInterfaceClass : 0;
 }
 
 UInt8 USBInterfaceShim::getInterfaceSubClass()
 {
-    return m_pInterface->getInterfaceDescriptor()->bInterfaceSubClass;
+    auto descriptor = m_pInterface->getInterfaceDescriptor();
+    return descriptor ? descriptor->bInterfaceSubClass : 0;
 }
 
 UInt8 USBInterfaceShim::getInterfaceProtocol()
 {
-    return m_pInterface->getInterfaceDescriptor()->bInterfaceProtocol;
+    auto descriptor = m_pInterface->getInterfaceDescriptor();
+    return descriptor ? descriptor->bInterfaceProtocol : 0;
 }
 #endif
 
@@ -440,7 +454,7 @@ IOReturn USBPipeShim::abort(void)
 //virtual IOReturn io(IOMemoryDescriptor* dataBuffer, uint32_t dataBufferLength, uint32_t& bytesTransferred, uint32_t completionTimeoutMs = 0);
 
 IOReturn USBPipeShim::read(IOMemoryDescriptor *	buffer,
-                           UInt32		noDataTimeout,
+                           UInt32,
                            UInt32		completionTimeout,
                            IOByteCount		reqCount,
                            USBCOMPLETION *	completion,
@@ -459,7 +473,7 @@ IOReturn USBPipeShim::read(IOMemoryDescriptor *	buffer,
 }
 
 IOReturn USBPipeShim::write(IOMemoryDescriptor *	buffer,
-                            UInt32		noDataTimeout,
+                            UInt32,
                             UInt32		completionTimeout,
                             IOByteCount		reqCount,
                             USBCOMPLETION *	completion)
